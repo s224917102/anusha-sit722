@@ -8,8 +8,9 @@ data:
   # Database Names
   PRODUCTS_DB_NAME: products
   ORDERS_DB_NAME: orders
-  AZURE_STORAGE_CONTAINER_NAME: week10storageaccount
+  AZURE_STORAGE_CONTAINER_NAME: product-images
   AZURE_SAS_TOKEN_EXPIRY_HOURS: "24"
 
-  PRODUCT_SERVICE_URL: http://product-service-w08e1:8000
-  ORDER_SERVICE_URL: http://order-service-w08e1:8001
+  PRODUCT_SERVICE_URL: http://product_service-w10-aks:8000
+  ORDER_SERVICE_URL: http://order_service-w10-aks:8001
+  CUSTOMER_SERVICE_URL: http://customer_service-w10-aks:8002

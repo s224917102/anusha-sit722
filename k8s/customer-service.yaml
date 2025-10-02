@@ -3,7 +3,7 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: customer-service-w08e1 # Deployment name matches
+  name: customer_service-w10-aks # Deployment name matches
   labels:
     app: customer-service
 spec:
@@ -49,7 +49,7 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: customer-service-w08e1
+  name: customer_service-w10-aks
   labels:
     app: customer-service
 spec:

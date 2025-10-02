@@ -3,7 +3,7 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: product-service-w08e1
+  name: product_service-w10-aks
   labels:
     app: product-service
 spec:
@@ -65,7 +65,7 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: product-service-w08e1
+  name: product_service-w10-aks
   labels:
     app: product-service
 spec:
