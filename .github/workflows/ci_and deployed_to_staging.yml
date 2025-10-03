@@ -191,8 +191,8 @@ jobs:
  #  Deploy to staging
   deploy_to_staging:
     runs-on: ubuntu-latest
-    needs: [staging_resources]
-    if: always() && needs.staging_resources.result == 'success'
+    needs: [build_and_push_images]
+    if: always() && needs.build_and_push_images.result == 'success'
     env:
       NS: "staging"
     steps:
