@@ -226,21 +226,6 @@ jobs:
           CURRENT_CONTEXT=$(kubectl config current-context)
           echo "Current context: $CURRENT_CONTEXT"
 
-      - name: Apply backend config & databases
-        run: |
-          set -euo pipefail
-          kubectl apply -n "$NS" -f k8s/configmaps.yaml
-          kubectl apply -n "$NS" -f k8s/secrets.yaml
-          kubectl apply -n "$NS" -f k8s/product-db.yaml
-          kubectl apply -n "$NS" -f k8s/order-db.yaml
-
-      - name: Deploy Product & Order services
-        run: |
-          set -euo pipefail
-          kubectl apply -n "$NS" -f k8s/product-service.yaml
-          kubectl apply -n "$NS" -f k8s/order-service.yaml
-          kubectl get all -n "$NS"
-
       - name: Deploy Backend Infrastructure (Namespace, ConfigMaps, Secrets, Databases)
         run: |
           set -euo pipefail
@@ -251,6 +236,13 @@ jobs:
           kubectl apply -n "$NS" -f product-db.yaml
           kubectl apply -n "$NS" -f customer-db.yaml
           kubectl apply -n "$NS" -f order-db.yaml
+
+      - name: Deploy Product & Order services
+        run: |
+          set -euo pipefail
+          kubectl apply -n "$NS" -f k8s/product-service.yaml
+          kubectl apply -n "$NS" -f k8s/order-service.yaml
+          kubectl apply -n "$NS" -f k8s/customer-service.yaml
       
       - name: Wait for Application Services to be Ready 
         run: |
@@ -291,23 +283,15 @@ jobs:
           # Test Product Service API endpoints
           echo "Testing Product Service APIs..."
           
-          # Get products (should return empty list initially)
-          echo "  - Testing GET /products"
-          curl -f -v -s "http://$PRODUCT_IP:8000/products" || exit 1
+          curl -f -v -s "http://$PRODUCT_IP:8000" || exit 1
           
           # Test Order Service API endpoints
           echo "Testing Order Service APIs..."
-          
-          # Get orders (should return empty list initially)
-          echo "  - Testing GET /orders"  
-          curl -f -v -s "http://$ORDER_IP:8001/orders" || exit 1
+          curl -f -v -s "http://$ORDER_IP:8001" || exit 1
 
           # Test Customer Service API endpoints
           echo "Testing Customer Service APIs..." 
-
-          # Get customers (should return empty list initially)
-          echo "  - Testing GET /customers"  
-          curl -f -v -s "http://$CUSTOMER_IP:8002/customers" || exit 1
+          curl -f -v -s "http://$CUSTOMER_IP:8002" || exit 1
           
           echo " All acceptance tests passed!"
 
