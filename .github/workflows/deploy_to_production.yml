@@ -7,7 +7,9 @@ on:
   
   pull_request:
     branches: [ main ]
-      
+  env:
+    RG_PRODUCTION: "anusha-rg-production"
+    AKS_PRODUCTION: "anusha-aks-production"     
 jobs:
   # Job 1: Deploy to Production
  #  Deploy to production
@@ -17,192 +19,191 @@ jobs:
     if: always() && needs.build_and_push_images.result == 'success'
     env:
       NS: "production"
-      RG_STAGING: "anusha-rg-production"
-      AKS_STAGING: "anusha-aks-production"
-  steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+    
+    steps:
+        - name: Checkout repository
+          uses: actions/checkout@v4
 
-      - name: Azure 
-        uses: azure/login@v1
-        with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
+        - name: Azure 
+          uses: azure/login@v1
+          with:
+            creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: Display Trigger Information
-        run: |
-          echo "Staging Resource Group: ${{ env.RG_PRODUCTION }}"
-          echo "Staging AKS Cluster: ${{ env.AKS_PRODUCTION }}"
+        - name: Display Trigger Information
+          run: |
+            echo "Staging Resource Group: ${{ env.RG_PRODUCTION }}"
+            echo "Staging AKS Cluster: ${{ env.AKS_PRODUCTION }}"
 
-      - name: Get AKS credentials
-        run: |
-          set -euo pipefail
-          az aks get-credentials --resource-group "${{ env.RG_PRODUCTION }}" --name "${{ env.AKS_PRODUCTION }}" --overwrite-existing
+        - name: Get AKS credentials
+          run: |
+            set -euo pipefail
+            az aks get-credentials --resource-group "${{ env.RG_PRODUCTION }}" --name "${{ env.AKS_PRODUCTION }}" --overwrite-existing
 
-      - name: Create namespace & set context
-        run: |
-          set -euo pipefail
-          kubectl create namespace "$NS" --dry-run=client -o yaml | kubectl apply -f -
-          
-          kubectl config set-context --current --namespace="$NS"
-          CURRENT_CONTEXT=$(kubectl config current-context)
-          echo "Current context: $CURRENT_CONTEXT"
+        - name: Create namespace & set context
+          run: |
+            set -euo pipefail
+            kubectl create namespace "$NS" --dry-run=client -o yaml | kubectl apply -f -
+            
+            kubectl config set-context --current --namespace="$NS"
+            CURRENT_CONTEXT=$(kubectl config current-context)
+            echo "Current context: $CURRENT_CONTEXT"
 
-      - name: Apply backend config & databases
-        run: |
-          set -euo pipefail
-          kubectl apply -n "$NS" -f k8s/configmaps.yaml
-          kubectl apply -n "$NS" -f k8s/secrets.yaml
-          kubectl apply -n "$NS" -f k8s/product-db.yaml
-          kubectl apply -n "$NS" -f k8s/order-db.yaml
+        - name: Apply backend config & databases
+          run: |
+            set -euo pipefail
+            kubectl apply -n "$NS" -f k8s/configmaps.yaml
+            kubectl apply -n "$NS" -f k8s/secrets.yaml
+            kubectl apply -n "$NS" -f k8s/product-db.yaml
+            kubectl apply -n "$NS" -f k8s/order-db.yaml
 
-      - name: Deploy Product & Order services
-        run: |
-          set -euo pipefail
-          kubectl apply -n "$NS" -f k8s/product-service.yaml
-          kubectl apply -n "$NS" -f k8s/order-service.yaml
-          kubectl get all -n "$NS"
+        - name: Deploy Product & Order services
+          run: |
+            set -euo pipefail
+            kubectl apply -n "$NS" -f k8s/product-service.yaml
+            kubectl apply -n "$NS" -f k8s/order-service.yaml
+            kubectl get all -n "$NS"
 
-      - name: Deploy Backend Infrastructure (Namespace, ConfigMaps, Secrets, Databases)
-        run: |
-          set -euo pipefail
-          echo "Deploying backend infrastructure..."
-          cd k8s/
-          kubectl apply -n "$NS" -f configmaps.yaml
-          kubectl apply -n "$NS" -f secrets.yaml
-          kubectl apply -n "$NS" -f product-db.yaml
-          kubectl apply -n "$NS" -f customer-db.yaml
-          kubectl apply -n "$NS" -f order-db.yaml
+        - name: Deploy Backend Infrastructure (Namespace, ConfigMaps, Secrets, Databases)
+          run: |
+            set -euo pipefail
+            echo "Deploying backend infrastructure..."
+            cd k8s/
+            kubectl apply -n "$NS" -f configmaps.yaml
+            kubectl apply -n "$NS" -f secrets.yaml
+            kubectl apply -n "$NS" -f product-db.yaml
+            kubectl apply -n "$NS" -f customer-db.yaml
+            kubectl apply -n "$NS" -f order-db.yaml
 
-      - name: Deploy Backend Microservices (Product, Customer, Order)
-        run: |
-          set -euo pipefail
-          echo "Deploying backend microservices..."
-          cd k8s/
-          kubectl apply -n "$NS" -f product-service.yaml
-          kubectl apply -n "$NS" -f customer-service.yaml
-          kubectl apply -n "$NS" -f order-service.yaml
-      
-      - name: Wait for Backend LoadBalancer IPs
-        env:
-          PRODUCT_SERVICE_NAME:  "product-service-w10-aks"
-          CUSTOMER_SERVICE_NAME: "customer-service-w10-aks"
-          ORDER_SERVICE_NAME: "order-service-w10-aks"
+        - name: Deploy Backend Microservices (Product, Customer, Order)
+          run: |
+            set -euo pipefail
+            echo "Deploying backend microservices..."
+            cd k8s/
+            kubectl apply -n "$NS" -f product-service.yaml
+            kubectl apply -n "$NS" -f customer-service.yaml
+            kubectl apply -n "$NS" -f order-service.yaml
+        
+        - name: Wait for Backend LoadBalancer IPs
+          env:
+            PRODUCT_SERVICE_NAME:  "product-service-w10-aks"
+            CUSTOMER_SERVICE_NAME: "customer-service-w10-aks"
+            ORDER_SERVICE_NAME: "order-service-w10-aks"
 
-        run: |
-          set -euo pipefail
-          echo "Waiting for Product, Customer, Order LoadBalancer IPs to be assigned (up to 5 minutes)..."
-          PRODUCT_IP=""
-          CUSTOMER_IP=""
-          ORDER_IP=""
-          
-          for i in $(seq 1 60); do
-            echo "Attempt $i/60 to get IPs..."
-            PRODUCT_IP=$(kubectl get service "$PRODUCT_SERVICE_NAME" -n "$NS" -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-            CUSTOMER_IP=$(kubectl get service "$CUSTOMER_SERVICE_NAME" -n "$NS" -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-            ORDER_IP=$(kubectl get service "$ORDER_SERVICE_NAME" -n "$NS" -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+          run: |
+            set -euo pipefail
+            echo "Waiting for Product, Customer, Order LoadBalancer IPs to be assigned (up to 5 minutes)..."
+            PRODUCT_IP=""
+            CUSTOMER_IP=""
+            ORDER_IP=""
+            
+            for i in $(seq 1 60); do
+              echo "Attempt $i/60 to get IPs..."
+              PRODUCT_IP=$(kubectl get service "$PRODUCT_SERVICE_NAME" -n "$NS" -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+              CUSTOMER_IP=$(kubectl get service "$CUSTOMER_SERVICE_NAME" -n "$NS" -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+              ORDER_IP=$(kubectl get service "$ORDER_SERVICE_NAME" -n "$NS" -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
 
-            if [[ -n "$PRODUCT_IP" && -n "$CUSTOMER_IP" && -n "$ORDER_IP" ]]; then
-              echo "All backend LoadBalancer IPs assigned!"
-              echo "Product Service IP: $PRODUCT_IP"
-              echo "Customer Service IP: $CUSTOMER_IP"
-              echo "Order Service IP: $ORDER_IP"
-              break
+              if [[ -n "$PRODUCT_IP" && -n "$CUSTOMER_IP" && -n "$ORDER_IP" ]]; then
+                echo "All backend LoadBalancer IPs assigned!"
+                echo "Product Service IP: $PRODUCT_IP"
+                echo "Customer Service IP: $CUSTOMER_IP"
+                echo "Order Service IP: $ORDER_IP"
+                break
+              fi
+              sleep 5 # Wait 5 seconds before next attempt
+            done
+            
+            if [[ -z "$PRODUCT_IP"|| -z "$CUSTOMER_IP" || -z "$ORDER_IP" ]]; then
+              echo "Error: One or more LoadBalancer IPs not assigned after timeout."
+              exit 1 # Fail the job if IPs are not obtained
             fi
-            sleep 5 # Wait 5 seconds before next attempt
-          done
-          
-          if [[ -z "$PRODUCT_IP"|| -z "$CUSTOMER_IP" || -z "$ORDER_IP" ]]; then
-            echo "Error: One or more LoadBalancer IPs not assigned after timeout."
-            exit 1 # Fail the job if IPs are not obtained
-          fi
-          
-          # These are environment variables for subsequent steps in the *same job*
-          # And used to set the job outputs
-          echo "PRODUCT_IP=$PRODUCT_IP" >> $GITHUB_ENV
-          echo "CUSTOMER_IP=$CUSTOMER_IP" >> $GITHUB_ENV
-          echo "ORDER_IP=$ORDER_IP" >> $GITHUB_ENV
+            
+            # These are environment variables for subsequent steps in the *same job*
+            # And used to set the job outputs
+            echo "PRODUCT_IP=$PRODUCT_IP" >> $GITHUB_ENV
+            echo "CUSTOMER_IP=$CUSTOMER_IP" >> $GITHUB_ENV
+            echo "ORDER_IP=$ORDER_IP" >> $GITHUB_ENV
 
-          echo " Deployed to production environment successfully!"
+            echo " Deployed to production environment successfully!"
 
-      - name: Capture Product Service IP for Workflow Output
-        id: get_product_ip
-        run: echo "external_ip=${{ env.PRODUCT_IP }}" >> $GITHUB_OUTPUT
+        - name: Capture Product Service IP for Workflow Output
+          id: get_product_ip
+          run: echo "external_ip=${{ env.PRODUCT_IP }}" >> $GITHUB_OUTPUT
 
-      - name: Capture Order Service IP for Workflow Output
-        id: get_order_ip
-        run: echo "external_ip=${{ env.ORDER_IP }}" >> $GITHUB_OUTPUT
+        - name: Capture Order Service IP for Workflow Output
+          id: get_order_ip
+          run: echo "external_ip=${{ env.ORDER_IP }}" >> $GITHUB_OUTPUT
 
-      - name: Capture Customer Service IP for Workflow Output
-        id: get_customer_ip
-        run: echo "external_ip=${{ env.CUSTOMER_IP }}" >> $GITHUB_OUTPUT
+        - name: Capture Customer Service IP for Workflow Output
+          id: get_customer_ip
+          run: echo "external_ip=${{ env.CUSTOMER_IP }}" >> $GITHUB_OUTPUT
 
-      - name: Inject Backend IPs into Frontend main.js
-        run: |
-          set -euo pipefail
-          echo "Injecting IPs into frontend/static/js/main.js"
+        - name: Inject Backend IPs into Frontend main.js
+          run: |
+            set -euo pipefail
+            echo "Injecting IPs into frontend/static/js/main.js"
 
-          PRODUCT_IP=${{ steps.get_product_ip.outputs.external_ip }}
-          ORDER_IP=${{ steps.get_order_ip.outputs.external_ip }}
-          CUSTOMER_IP=${{ steps.get_customer_ip.outputs.external_ip }}
+            PRODUCT_IP=${{ steps.get_product_ip.outputs.external_ip }}
+            ORDER_IP=${{ steps.get_order_ip.outputs.external_ip }}
+            CUSTOMER_IP=${{ steps.get_customer_ip.outputs.external_ip }}
 
-          # Ensure frontend/main.js is directly in the path for sed
-          sed -i "s|_PRODUCT_API_URL_|http://$PRODUCT_IP:8000|g" frontend/main.js
-          sed -i "s|_ORDER_API_URL_|http://$ORDER_IP:8001|g" frontend/main.js
-          sed -i "s|_CUSTOMER_API_URL_|http://$CUSTOMER_IP:8002|g" frontend/main.js
-          
-          # Display the modified file content for debugging
-          echo "--- Modified main.js content ---"
-          cat frontend/main.js
-          echo "---------------------------------"
-      
-      # Build and Push Docker image for Frontend
-      - name: Build and Push Frontend Image
-        run: |
-          set -euo pipefail
-          docker build -t "${{ secrets.ACR_LOGIN_SERVER }}/frontend:latest" ./frontend/
-          docker push "${{ secrets.ACR_LOGIN_SERVER }}/frontend:latest"
+            # Ensure frontend/main.js is directly in the path for sed
+            sed -i "s|_PRODUCT_API_URL_|http://$PRODUCT_IP:8000|g" frontend/main.js
+            sed -i "s|_ORDER_API_URL_|http://$ORDER_IP:8001|g" frontend/main.js
+            sed -i "s|_CUSTOMER_API_URL_|http://$CUSTOMER_IP:8002|g" frontend/main.js
+            
+            # Display the modified file content for debugging
+            echo "--- Modified main.js content ---"
+            cat frontend/main.js
+            echo "---------------------------------"
+        
+        # Build and Push Docker image for Frontend
+        - name: Build and Push Frontend Image
+          run: |
+            set -euo pipefail
+            docker build -t "${{ secrets.ACR_LOGIN_SERVER }}/frontend:latest" ./frontend/
+            docker push "${{ secrets.ACR_LOGIN_SERVER }}/frontend:latest"
 
-      - name: Deploy Frontend to AKS
-        run: |
-          set -euo pipefail
+        - name: Deploy Frontend to AKS
+          run: |
+            set -euo pipefail
 
-          echo "Deploying frontend to AKS cluster.."
-          
-          cd k8s/
-          # Ensure frontend-service.yaml is configured with your ACR
-          kubectl apply -n "$NS" -f frontend.yaml
+            echo "Deploying frontend to AKS cluster.."
+            
+            cd k8s/
+            # Ensure frontend-service.yaml is configured with your ACR
+            kubectl apply -n "$NS" -f frontend.yaml
 
-      - name: Wait for Frontend LoadBalancer IPs
-        env:
-          FRONTEND_SERVICE_NAME: "frontend-w10-aks"
-        run: |
-          set -euo pipefail
-          echo "Waiting for Frontend LoadBalancer IPs to be assigned (up to 5 minutes)..."
-          FRONTEND_IP=""
-          
-          for i in $(seq 1 60); do
-            echo "Attempt $i/60 to get IP..."
-            FRONTEND_IP=$(kubectl get service "$FRONTEND_SERVICE_NAME" -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+        - name: Wait for Frontend LoadBalancer IPs
+          env:
+            FRONTEND_SERVICE_NAME: "frontend-w10-aks"
+          run: |
+            set -euo pipefail
+            echo "Waiting for Frontend LoadBalancer IPs to be assigned (up to 5 minutes)..."
+            FRONTEND_IP=""
+            
+            for i in $(seq 1 60); do
+              echo "Attempt $i/60 to get IP..."
+              FRONTEND_IP=$(kubectl get service "$FRONTEND_SERVICE_NAME" -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
 
-            if [[ -n "$FRONTEND_IP" ]]; then
-              echo "Frontend LoadBalancer IPs assigned: $FRONTEND_IP"
-              break
+              if [[ -n "$FRONTEND_IP" ]]; then
+                echo "Frontend LoadBalancer IPs assigned: $FRONTEND_IP"
+                break
+              fi
+              sleep 5 # Wait 5 seconds before next attempt
+            done
+            
+            if [[ -z "$FRONTEND_IP" ]]; then
+              echo "Error: One or more LoadBalancer IPs not assigned after timeout."
+              exit 1 # Fail the job if IP is not obtained
             fi
-            sleep 5 # Wait 5 seconds before next attempt
-          done
-          
-          if [[ -z "$FRONTEND_IP" ]]; then
-            echo "Error: One or more LoadBalancer IPs not assigned after timeout."
-            exit 1 # Fail the job if IP is not obtained
-          fi
-          
-          # These are environment variables for subsequent steps in the *same job*
-          # And used to set the job outputs
-          echo "FRONTEND_IP=$FRONTEND_IP" >> $GITHUB_ENV
+            
+            # These are environment variables for subsequent steps in the *same job*
+            # And used to set the job outputs
+            echo "FRONTEND_IP=$FRONTEND_IP" >> $GITHUB_ENV
 
-      - name: Capture Frontend Service IP for Workflow Output
-        id: get_frontend_ip
-        run: echo "external_ip=${{ env.FRONTEND_IP }}" >> $GITHUB_OUTPUT
+        - name: Capture Frontend Service IP for Workflow Output
+          id: get_frontend_ip
+          run: echo "external_ip=${{ env.FRONTEND_IP }}" >> $GITHUB_OUTPUT
 
-      - name: Logout from Azure
-        run: az logout
+        - name: Logout from Azure
+          run: az logout

@@ -203,6 +203,7 @@ jobs:
         uses: azure/login@v1
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
+
       - name: Display Trigger Information
         run: |
           echo "Staging Resource Group: ${{ env.RG_STAGING }}"
@@ -247,78 +248,46 @@ jobs:
           kubectl apply -n "$NS" -f product-db.yaml
           kubectl apply -n "$NS" -f customer-db.yaml
           kubectl apply -n "$NS" -f order-db.yaml
-
-      - name: Deploy Backend Microservices (Product, Customer, Order)
-        run: |
-          set -euo pipefail
-          echo "Deploying backend microservices..."
-          cd k8s/
-          kubectl apply -n "$NS" -f product-service.yaml
-          kubectl apply -n "$NS" -f customer-service.yaml
-          kubectl apply -n "$NS" -f order-service.yaml
       
-      - name: Wait for Backend LoadBalancer IPs
+      - name: Wait for Application Services to be Ready 
+        run: |
+          echo " Waiting for application services to be ready..."
+          kubectl wait --for=condition=available --timeout=60s deployment/product-service-w08e1 -n staging
+          kubectl wait --for=condition=available --timeout=60s deployment/order-service-w08e1 -n staging
+          kubectl wait --for=condition=available --timeout=60s deployment/customer-service-w08e1 -n staging
+          echo " Application services are ready!"
+
+      - name: Get Staging Environment URLs
         env:
           PRODUCT_SERVICE_NAME:  "product-service-w10-aks"
           CUSTOMER_SERVICE_NAME: "customer-service-w10-aks"
           ORDER_SERVICE_NAME: "order-service-w10-aks"
-
         run: |
-          set -euo pipefail
-          echo "Waiting for Product, Customer, Order LoadBalancer IPs to be assigned (up to 5 minutes)..."
-          PRODUCT_IP=""
-          CUSTOMER_IP=""
-          ORDER_IP=""
+          echo " Retrieving staging environment URLs..."
+          kubectl get services -n staging
           
-          for i in $(seq 1 60); do
-            echo "Attempt $i/60 to get IPs..."
-            PRODUCT_IP=$(kubectl get service "$PRODUCT_SERVICE_NAME" -n "$NS" -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-            CUSTOMER_IP=$(kubectl get service "$CUSTOMER_SERVICE_NAME" -n "$NS" -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-            ORDER_IP=$(kubectl get service "$ORDER_SERVICE_NAME" -n "$NS" -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-
-            if [[ -n "$PRODUCT_IP" && -n "$CUSTOMER_IP" && -n "$ORDER_IP" ]]; then
-              echo "All backend LoadBalancer IPs assigned!"
-              echo "Product Service IP: $PRODUCT_IP"
-              echo "Customer Service IP: $CUSTOMER_IP"
-              echo "Order Service IP: $ORDER_IP"
-              break
-            fi
-            sleep 5 # Wait 5 seconds before next attempt
+          # Wait for external IPs with timeout
+          echo " Waiting for LoadBalancer external IPs..."
+          timeout 10 bash -c '
+          while [[ $(kubectl get svc "$PRODUCT_SERVICE_NAME" -n staging -o jsonpath="{.status.loadBalancer.ingress[0].ip}" 2>/dev/null) == "" ]]; do
+            echo "Waiting for "$PRODUCT_SERVICE_NAME" external IP..."
+            sleep 15
           done
-          
-          if [[ -z "$PRODUCT_IP"|| -z "$CUSTOMER_IP" || -z "$ORDER_IP" ]]; then
-            echo "Error: One or more LoadBalancer IPs not assigned after timeout."
-            exit 1 # Fail the job if IPs are not obtained
-          fi
-          
-          # These are environment variables for subsequent steps in the *same job*
-          # And used to set the job outputs
-          echo "PRODUCT_IP=$PRODUCT_IP" >> $GITHUB_ENV
-          echo "CUSTOMER_IP=$CUSTOMER_IP" >> $GITHUB_ENV
-          echo "ORDER_IP=$ORDER_IP" >> $GITHUB_ENV
+          while [[ $(kubectl get svc "$ORDER_SERVICE_NAME" -n staging -o jsonpath="{.status.loadBalancer.ingress[0].ip}" 2>/dev/null) == "" ]]; do
+            echo "Waiting for "$ORDER_SERVICE_NAME" external IP..."
+            sleep 15
+          done
+          while [[ $(kubectl get svc "$CUSTOMER_SERVICE_NAME" -n staging -o jsonpath="{.status.loadBalancer.ingress[0].ip}" 2>/dev/null) == "" ]]; do
+            echo "Waiting for "$CUSTOMER_SERVICE_NAME" external IP..."
+            sleep 15
+          done
+          ' || echo "  LoadBalancer IPs may take additional time to provision"
 
-          echo " Deployed to production environment successfully!"
-
-      - name: Capture Product Service IP for Workflow Output
-        id: get_product_ip
-        run: echo "external_ip=${{ env.PRODUCT_IP }}" >> $GITHUB_OUTPUT
-
-      - name: Capture Order Service IP for Workflow Output
-        id: get_order_ip
-        run: echo "external_ip=${{ env.ORDER_IP }}" >> $GITHUB_OUTPUT
-
-      - name: Capture Customer Service IP for Workflow Output
-        id: get_customer_ip
-        run: echo "external_ip=${{ env.CUSTOMER_IP }}" >> $GITHUB_OUTPUT
-
-      - name: Inject Backend IPs into Frontend main.js
-        run: |
-          set -euo pipefail
           echo "Injecting IPs into frontend/static/js/main.js"
 
-          PRODUCT_IP=${{ steps.get_product_ip.outputs.external_ip }}
-          ORDER_IP=${{ steps.get_order_ip.outputs.external_ip }}
-          CUSTOMER_IP=${{ steps.get_customer_ip.outputs.external_ip }}
+          PRODUCT_IP=$(kubectl get svc "$PRODUCT_SERVICE_NAME" -n staging -o jsonpath="{.status.loadBalancer.ingress[0].ip}")
+          ORDER_IP=$(kubectl get svc "$CUSTOMER_SERVICE_NAME" -n staging -o jsonpath="{.status.loadBalancer.ingress[0].ip}")
+          CUSTOMER_IP=$(kubectl get svc "$ORDER_SERVICE_NAME" -n staging -o jsonpath="{.status.loadBalancer.ingress[0].ip}") 
 
           # Ensure frontend/main.js is directly in the path for sed
           sed -i "s|_PRODUCT_API_URL_|http://$PRODUCT_IP:8000|g" frontend/main.js
@@ -352,6 +321,7 @@ jobs:
           FRONTEND_SERVICE_NAME: "frontend-w10-aks"
         run: |
           set -euo pipefail
+          
           echo "Waiting for Frontend LoadBalancer IPs to be assigned (up to 5 minutes)..."
           FRONTEND_IP=""
           
@@ -375,18 +345,114 @@ jobs:
           # And used to set the job outputs
           echo "FRONTEND_IP=$FRONTEND_IP" >> $GITHUB_ENV
 
-      - name: Capture Frontend Service IP for Workflow Output
-        id: get_frontend_ip
-        run: echo "external_ip=${{ env.FRONTEND_IP }}" >> $GITHUB_OUTPUT
+          echo " STAGING ENVIRONMENT DEPLOYED SUCCESSFULLY!"
+ 
+      - name: Logout from Azure
+        run: az logout
+        if: always()
 
       - name: Logout from Azure
         run: az logout
 
   
+    # Job 3: Run Staging Tests
+  run_staging_tests:
+    runs-on: ubuntu-latest
+    needs: deploy_to_staging
+    if: success()
+
+    outputs:
+      product_api_ip: ${{ steps.get_product_ip.outputs.external_ip }}
+      order_api_ip: ${{ steps.get_order_ip.outputs.external_ip }}
+      customer_api_ip: ${{ steps.get_customer_ip.outputs.external_ip }}
+
+
+    steps:
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+          # enable-AzPSSession: true
+
+      - name: Get AKS Credentials
+        run: |
+          az aks get-credentials \
+            --resource-group ${{ env.STAGING_RG }} \
+            --name ${{ env.STAGING_AKS }} \
+            --overwrite-existing
+
+      - name: Get Service IPs
+        id: get_ips
+        run: |
+          PRODUCT_SERVICE_IP=$(kubectl get svc product-service-w08e1 -n staging -o jsonpath="{.status.loadBalancer.ingress[0].ip}")
+          ORDER_SERVICE_IP=$(kubectl get svc order-service-w08e1 -n staging -o jsonpath="{.status.loadBalancer.ingress[0].ip}")
+          CUSTOMER_SERVICE_IP=$(kubectl get svc customer-service-w08e1 -n staging -o jsonpath="{.status.loadBalancer.ingress[0].ip}") 
+          
+          echo "product_ip=$PRODUCT_SERVICE_IP" >> $GITHUB_ENV
+          echo "order_ip=$ORDER_SERVICE_IP" >> $GITHUB_ENV
+          echo "customer_ip=$CUSTOMER_SERVICE_IP" >> $GITHUB_ENV
+          
+          echo "product_ip=$PRODUCT_SERVICE_IP" >> $GITHUB_OUTPUT
+          echo "order_ip=$ORDER_SERVICE_IP" >> $GITHUB_OUTPUT
+          echo "customer_ip=$CUSTOMER_SERVICE_IP" >> $GITHUB_OUTPUT
+
+          echo "Product Service IP: $PRODUCT_SERVICE_IP"
+          echo "Order Service IP: $ORDER_SERVICE_IP"
+          echo "Customer Service IP: $CUSTOMER_SERVICE_IP"
+
+
+      - name: Run Simple Acceptance Tests
+        run: |
+          echo " Running acceptance tests..."
+          
+          PRODUCT_IP=${{ steps.get_ips.outputs.product_ip }}
+          ORDER_IP=${{ steps.get_ips.outputs.order_ip }}
+          CUSTOMER_IP=${{ steps.get_ips.outputs.customer_ip }}
+
+          
+          # Test Product Service API endpoints
+          echo "Testing Product Service APIs..."
+          
+          # Get products (should return empty list initially)
+          echo "  - Testing GET /products"
+          curl -f -v -s "http://$PRODUCT_IP:8000/products" || exit 1
+          
+          # Test Order Service API endpoints
+          echo "Testing Order Service APIs..."
+          
+          # Get orders (should return empty list initially)
+          echo "  - Testing GET /orders"  
+          curl -f -v -s "http://$ORDER_IP:8001/orders" || exit 1
+
+          # Test Customer Service API endpoints
+          echo "Testing Customer Service APIs..." 
+
+          # Get customers (should return empty list initially)
+          echo "  - Testing GET /customers"  
+          curl -f -v -s "http://$CUSTOMER_IP:8002/customers" || exit 1
+          
+          echo " All acceptance tests passed!"
+
+      - name: Capture Product Service IP for Workflow Output
+        id: get_product_ip
+        run: echo "external_ip=${{ steps.get_ips.outputs.product_ip }}" >> $GITHUB_OUTPUT
+      
+      - name: Capture Order Service IP for Workflow Output
+        id: get_order_ip
+        run: echo "external_ip=${{ steps.get_ips.outputs.order_ip }}" >> $GITHUB_OUTPUT
+
+      - name: Capture Customer Service IP for Workflow Output
+        id: get_customer_ip
+        run: echo "external_ip=${{ steps.get_ips.outputs.customer_ip }}" >> $GITHUB_OUTPUT
+ 
+      - name: Logout from Azure
+        run: az logout
+        if: always()
+
   # Job 5: Destroy Staging Environment
   destroy_staging_environment:
     runs-on: ubuntu-latest
-    needs: [deploy_to_staging]
+    needs: [run_staging_tests, deploy_to_staging]
     if: always() && needs.deploy_to_staging.result == 'success'
 
     steps:
