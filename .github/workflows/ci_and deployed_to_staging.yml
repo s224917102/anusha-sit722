@@ -220,6 +220,7 @@ jobs:
       - name: Create namespace & set context
         run: |
           set -euo pipefail
+          
           kubectl create namespace "$NS" --dry-run=client -o yaml | kubectl apply -f -
           
           kubectl config set-context --current --namespace="$NS"
@@ -231,18 +232,27 @@ jobs:
           set -euo pipefail
           echo "Deploying backend infrastructure..."
           cd k8s/
-          kubectl apply -n "$NS" -f configmaps.yaml
-          kubectl apply -n "$NS" -f secrets.yaml
-          kubectl apply -n "$NS" -f product-db.yaml
-          kubectl apply -n "$NS" -f customer-db.yaml
-          kubectl apply -n "$NS" -f order-db.yaml
+          kubectl apply -f configmaps.yaml -n staging
+          kubectl apply -f secrets.yaml -n staging
+          kubectl apply -f product-db.yaml -n staging
+          kubectl apply -f order-db.yaml -n staging
+          kubectl apply -f customer-db.yaml -n staging
+
+      - name: Wait for Databases to be Ready
+        run: |
+          echo " Waiting for databases to be ready..."
+          kubectl wait --for=condition=available --timeout=300s deployment/product-db-deployment-w10-aks -n staging
+          kubectl wait --for=condition=available --timeout=300s deployment/order-db-deployment-w10-aks -n staging
+          kubectl wait --for=condition=available --timeout=300s deployment/customer-db-deployment-w10-aks -n staging
+          echo " Databases are ready!"
 
       - name: Deploy Product & Order services
         run: |
           set -euo pipefail
-          kubectl apply -n "$NS" -f k8s/product-service.yaml
-          kubectl apply -n "$NS" -f k8s/order-service.yaml
-          kubectl apply -n "$NS" -f k8s/customer-service.yaml
+
+          kubectl apply -f product-service.yaml -n staging
+          kubectl apply -f order-service.yaml -n staging
+          kubectl apply -f customer-service.yaml -n staging
       
       - name: Wait for Application Services to be Ready 
         run: |
@@ -322,7 +332,7 @@ jobs:
           
           cd k8s/
           # Ensure frontend-service.yaml is configured with your ACR
-          kubectl apply -n "$NS" -f frontend.yaml
+          kubectl apply -f frontend.yaml -n staging
 
       - name: Wait for Frontend LoadBalancer IPs
         env:
