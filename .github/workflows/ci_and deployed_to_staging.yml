@@ -190,15 +190,12 @@ jobs:
 # STAGE 3: Deploy to Staging Environment
   deploy-staging:
     name: Deploy to Staging
-    needs: build-and-push
+    needs: build_and_push_images
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: List repo files for debug
-        run: ls -la
 
       - name: Configure Azure credentials
         uses: azure/login@v2
