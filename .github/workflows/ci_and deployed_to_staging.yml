@@ -288,6 +288,29 @@ jobs:
           ORDER_IP=$(kubectl get svc "$CUSTOMER_SERVICE_NAME" -n staging -o jsonpath="{.status.loadBalancer.ingress[0].ip}")
           CUSTOMER_IP=$(kubectl get svc "$ORDER_SERVICE_NAME" -n staging -o jsonpath="{.status.loadBalancer.ingress[0].ip}") 
 
+          # Test Product Service API endpoints
+          echo "Testing Product Service APIs..."
+          
+          # Get products (should return empty list initially)
+          echo "  - Testing GET /products"
+          curl -f -v -s "http://$PRODUCT_IP:8000/products" || exit 1
+          
+          # Test Order Service API endpoints
+          echo "Testing Order Service APIs..."
+          
+          # Get orders (should return empty list initially)
+          echo "  - Testing GET /orders"  
+          curl -f -v -s "http://$ORDER_IP:8001/orders" || exit 1
+
+          # Test Customer Service API endpoints
+          echo "Testing Customer Service APIs..." 
+
+          # Get customers (should return empty list initially)
+          echo "  - Testing GET /customers"  
+          curl -f -v -s "http://$CUSTOMER_IP:8002/customers" || exit 1
+          
+          echo " All acceptance tests passed!"
+
           # Ensure frontend/main.js is directly in the path for sed
           sed -i "s|_PRODUCT_API_URL_|http://$PRODUCT_IP:8000|g" frontend/main.js
           sed -i "s|_ORDER_API_URL_|http://$ORDER_IP:8001|g" frontend/main.js
@@ -297,6 +320,8 @@ jobs:
           echo "--- Modified main.js content ---"
           cat frontend/main.js
           echo "---------------------------------"
+
+
       
       # Build and Push Docker image for Frontend
       - name: Build and Push Frontend Image
@@ -352,101 +377,6 @@ jobs:
 
       - name: Logout from Azure
         run: az logout
-
-  
-    # Job 3: Run Staging Tests
-  run_staging_tests:
-    runs-on: ubuntu-latest
-    needs: deploy_to_staging
-    if: success()
-
-    outputs:
-      product_api_ip: ${{ steps.get_product_ip.outputs.external_ip }}
-      order_api_ip: ${{ steps.get_order_ip.outputs.external_ip }}
-      customer_api_ip: ${{ steps.get_customer_ip.outputs.external_ip }}
-
-
-    steps:
-      - name: Azure Login
-        uses: azure/login@v1
-        with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
-          # enable-AzPSSession: true
-
-      - name: Get AKS Credentials
-        run: |
-          az aks get-credentials \
-            --resource-group ${{ env.STAGING_RG }} \
-            --name ${{ env.STAGING_AKS }} \
-            --overwrite-existing
-
-      - name: Get Service IPs
-        id: get_ips
-        run: |
-          PRODUCT_SERVICE_IP=$(kubectl get svc product-service-w08e1 -n staging -o jsonpath="{.status.loadBalancer.ingress[0].ip}")
-          ORDER_SERVICE_IP=$(kubectl get svc order-service-w08e1 -n staging -o jsonpath="{.status.loadBalancer.ingress[0].ip}")
-          CUSTOMER_SERVICE_IP=$(kubectl get svc customer-service-w08e1 -n staging -o jsonpath="{.status.loadBalancer.ingress[0].ip}") 
-          
-          echo "product_ip=$PRODUCT_SERVICE_IP" >> $GITHUB_ENV
-          echo "order_ip=$ORDER_SERVICE_IP" >> $GITHUB_ENV
-          echo "customer_ip=$CUSTOMER_SERVICE_IP" >> $GITHUB_ENV
-          
-          echo "product_ip=$PRODUCT_SERVICE_IP" >> $GITHUB_OUTPUT
-          echo "order_ip=$ORDER_SERVICE_IP" >> $GITHUB_OUTPUT
-          echo "customer_ip=$CUSTOMER_SERVICE_IP" >> $GITHUB_OUTPUT
-
-          echo "Product Service IP: $PRODUCT_SERVICE_IP"
-          echo "Order Service IP: $ORDER_SERVICE_IP"
-          echo "Customer Service IP: $CUSTOMER_SERVICE_IP"
-
-
-      - name: Run Simple Acceptance Tests
-        run: |
-          echo " Running acceptance tests..."
-          
-          PRODUCT_IP=${{ steps.get_ips.outputs.product_ip }}
-          ORDER_IP=${{ steps.get_ips.outputs.order_ip }}
-          CUSTOMER_IP=${{ steps.get_ips.outputs.customer_ip }}
-
-          
-          # Test Product Service API endpoints
-          echo "Testing Product Service APIs..."
-          
-          # Get products (should return empty list initially)
-          echo "  - Testing GET /products"
-          curl -f -v -s "http://$PRODUCT_IP:8000/products" || exit 1
-          
-          # Test Order Service API endpoints
-          echo "Testing Order Service APIs..."
-          
-          # Get orders (should return empty list initially)
-          echo "  - Testing GET /orders"  
-          curl -f -v -s "http://$ORDER_IP:8001/orders" || exit 1
-
-          # Test Customer Service API endpoints
-          echo "Testing Customer Service APIs..." 
-
-          # Get customers (should return empty list initially)
-          echo "  - Testing GET /customers"  
-          curl -f -v -s "http://$CUSTOMER_IP:8002/customers" || exit 1
-          
-          echo " All acceptance tests passed!"
-
-      - name: Capture Product Service IP for Workflow Output
-        id: get_product_ip
-        run: echo "external_ip=${{ steps.get_ips.outputs.product_ip }}" >> $GITHUB_OUTPUT
-      
-      - name: Capture Order Service IP for Workflow Output
-        id: get_order_ip
-        run: echo "external_ip=${{ steps.get_ips.outputs.order_ip }}" >> $GITHUB_OUTPUT
-
-      - name: Capture Customer Service IP for Workflow Output
-        id: get_customer_ip
-        run: echo "external_ip=${{ steps.get_ips.outputs.customer_ip }}" >> $GITHUB_OUTPUT
- 
-      - name: Logout from Azure
-        run: az logout
-        if: always()
 
   # Job 5: Destroy Staging Environment
   destroy_staging_environment:
