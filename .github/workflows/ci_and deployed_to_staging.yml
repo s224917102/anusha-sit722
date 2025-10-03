@@ -276,13 +276,10 @@ jobs:
           echo "--- Modified main.js content ---"
           cat frontend/main.js
           echo "---------------------------------"
-
-
       
       # Build and Push Docker image for Frontend
       - name: Build and Push Frontend Image
         run: |
-          set -euo pipefail
           docker build -t "${{ secrets.ACR_LOGIN_SERVER }}/frontend:latest" ./frontend/
           docker push "${{ secrets.ACR_LOGIN_SERVER }}/frontend:latest"
 
