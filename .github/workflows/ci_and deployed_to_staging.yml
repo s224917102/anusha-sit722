@@ -276,9 +276,9 @@ jobs:
       
       - name: Wait for Backend LoadBalancer IPs
         env:
-          PRODUCT_SERVICE_NAME:  "product-service-w08e1"
-          CUSTOMER_SERVICE_NAME: "customer-service-w08e1"
-          ORDER_SERVICE_NAME: "order-service-w08e1"
+          PRODUCT_SERVICE_NAME:  "product-service-w10-aks"
+          CUSTOMER_SERVICE_NAME: "customer-service-w10-aks"
+          ORDER_SERVICE_NAME: "order-service-w10-aks"
 
         run: |
           set -euo pipefail
@@ -362,16 +362,10 @@ jobs:
           cd k8s/
           # Ensure frontend-service.yaml is configured with your ACR
           kubectl apply -n "$NS" -f frontend.yaml
-            - name: Deploy Production Application
-        run: |
-          echo " Deploying to production environment..."
-          kubectl apply -f k8s/
-          echo " Waiting for services to initialize..."
-          sleep 120
 
       - name: Wait for Frontend LoadBalancer IPs
         env:
-          FRONTEND_SERVICE_NAME: "frontend-w08e1"
+          FRONTEND_SERVICE_NAME: "frontend-w10-aks"
         run: |
           set -euo pipefail
           echo "Waiting for Frontend LoadBalancer IPs to be assigned (up to 5 minutes)..."
