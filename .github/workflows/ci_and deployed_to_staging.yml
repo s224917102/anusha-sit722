@@ -194,7 +194,7 @@ jobs:
     needs: [staging_resources]
     if: always() && needs.staging_resources.result == 'success'
     env:
-      NS: ${{ env.NS }}
+      NS: "staging"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
