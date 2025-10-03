@@ -20,13 +20,7 @@ spec:
           imagePullPolicy: Always
           ports:
             - containerPort: 80
-          env:
-            - name: PRODUCT_API_BASE_URL
-              value: "http://product-service-w10-aks:8000"
-            - name: ORDER_API_BASE_URL
-              value: "http://order-service-w10-aks:8001"
-            - name: CUSTOMER_API_BASE_URL
-              value: "http://customer-service-w10-aks:8002"
+
 ---
 apiVersion: v1
 kind: Service
