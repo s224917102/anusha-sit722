@@ -248,7 +248,7 @@ jobs:
           kubectl apply -f customer-service.yaml -n staging
       
 
-      - name: Get Staging Environment URLs
+      - name: Run Test For the backend URL
         run: |
           PRODUCT_IP=""
           ORDER_IP=""
@@ -270,6 +270,22 @@ jobs:
             sleep 30 # Wait 5 seconds before next attempt
           done
           
+          # Test Product Service API endpoints
+          echo "Testing Product Service APIs..."
+          curl -f -v -s "http://$PRODUCT_IP:8000/products" || exit 1
+          
+          # Test Order Service API endpoints
+          echo "Testing Order Service APIs..."
+          curl -f -v -s "http://$ORDER_IP:8001/orders" || exit 1
+
+          # Test Customer Service API endpoints
+          echo "Testing Customer Service APIs..." 
+          curl -f -v -s "http://$CUSTOMER_IP:8002" || exit 1
+          
+          # Get frontend
+          curl -f -v -s "http://$FRONTEND_IP:80" || exit 1
+          
+          echo " All acceptance tests passed!"
 
           # Ensure frontend/main.js is directly in the path for sed
           sed -i "s|_PRODUCT_API_URL_|http://$PRODUCT_IP:8000|g" frontend/main.js
@@ -308,7 +324,7 @@ jobs:
           
           for i in $(seq 1 60); do
             echo "Attempt $i/60 to get IP..."
-            FRONTEND_IP=$(kubectl get service "$FRONTEND_SERVICE_NAME" -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+            FRONTEND_IP=$(kubectl get service "$FRONTEND_SERVICE_NAME" -n staging -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
 
             if [[ -n "$FRONTEND_IP" ]]; then
               echo "Frontend LoadBalancer IPs assigned: $FRONTEND_IP"
@@ -321,15 +337,14 @@ jobs:
             echo "Error: One or more LoadBalancer IPs not assigned after timeout."
             exit 1 # Fail the job if IP is not obtained
           fi
-          
-          # These are environment variables for subsequent steps in the *same job*
-          # And used to set the job outputs
-          echo "FRONTEND_IP=$FRONTEND_IP" >> $GITHUB_ENV
 
           echo " STAGING ENVIRONMENT DEPLOYED SUCCESSFULLY!"
 
+          echo "frontend_ip=$FRONTEND_IP"
+
       - name: Logout from Azure
         run: az logout
+
 
   # Job 5: Destroy Staging Environment
   destroy_staging_environment:
@@ -368,7 +383,6 @@ jobs:
           kubectl delete -f product-db.yaml -n staging
           kubectl delete -f order-db.yaml -n staging
           kubectl delete -f customer-db.yaml -n staging
-      
 
       - name: Delete Backend Microservices (Product, Order)
         run: |
