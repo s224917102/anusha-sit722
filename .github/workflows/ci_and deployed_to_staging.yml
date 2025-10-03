@@ -212,7 +212,7 @@ jobs:
       - name: Get AKS credentials
         run: |
           set -euo pipefail
-          az aks get-credentials --resource-group "{{ env.RG_STAGING }}" --name "{{ env.AKS_STAGING }}" --overwrite-existing
+          az aks get-credentials --resource-group "${{ env.RG_STAGING }}" --name "${{ env.AKS_STAGING }}" --overwrite-existing
 
       - name: Create namespace & set context
         run: |
