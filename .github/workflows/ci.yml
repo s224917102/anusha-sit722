@@ -158,19 +158,29 @@ jobs:
       - name: Login to Azure Container Registry
         run: az acr login --name ${{ secrets.ACR_LOGIN_SERVER }}
 
-      # Build and Push Docker image for Product and Order Service
-      - name: Build & Push ${{ matrix.service }} image
+      # Build and Push Docker image for Product Service
+      - name: Build and Push Product Service Image
         run: |
-          docker build -t "${{ secrets.ACR_LOGIN_SERVER }}/${{ matrix.service }}:${{ env.IMAGE_TAG }}" ./backend/${{ matrix.service }}/
-          docker tag  "${{ secrets.ACR_LOGIN_SERVER }}/${{ matrix.service }}:${{ env.IMAGE_TAG }}" "${{ secrets.ACR_LOGIN_SERVER }}/${{ matrix.service }}:latest"
-          docker push "${{ secrets.ACR_LOGIN_SERVER }}/${{ matrix.service }}:${{ env.IMAGE_TAG }}"
-          docker push "${{ secrets.ACR_LOGIN_SERVER }}/${{ matrix.service }}:latest"
-      
+            docker build -t ${{ secrets.ACR_LOGIN_SERVER }}/product_service:latest ./backend/product_service/
+            docker push ${{ secrets.ACR_LOGIN_SERVER }}/product_service:latest
+
+      # Build and Push Docker image for Order Service
+      - name: Build and Push Order Service Image
+        run: |
+            docker build -t ${{ secrets.ACR_LOGIN_SERVER }}/order_service:latest ./backend/order_service/
+            docker push ${{ secrets.ACR_LOGIN_SERVER }}/order_service:latest
+
+      # Build and Push Docker image for Customer Service
+      - name: Build and Push Customer Service Image
+        run: |
+            docker build -t ${{ secrets.ACR_LOGIN_SERVER }}/customer_service:latest ./backend/customer_service/
+            docker push ${{ secrets.ACR_LOGIN_SERVER }}/customer_service:latest
+
       # Build and Push Docker image for Frontend Service
       - name: Build and Push Frontend Image
         run: |
-          docker build -t "${{ env.ACR_LOGIN_SERVER }}/frontend:latest" ./frontend/
-          docker push "${{ env.ACR_LOGIN_SERVER }}/frontend:latest"
+          docker build -t "${{ secrets.ACR_LOGIN_SERVER }}/frontend:latest" ./frontend/
+          docker push "${{ secrets.ACR_LOGIN_SERVER }}/frontend:latest"
       
       - name: Logout from Azure
         run: az logout
