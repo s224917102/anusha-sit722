@@ -157,7 +157,13 @@ jobs:
           cd k8s/
           # Ensure frontend-service.yaml is configured with your ACR
           kubectl apply -n "$NS" -f frontend.yaml
-      
+            - name: Deploy Production Application
+        run: |
+          echo " Deploying to production environment..."
+          kubectl apply -f k8s/
+          echo " Waiting for services to initialize..."
+          sleep 120
+
       - name: Wait for Frontend LoadBalancer IPs
         env:
           FRONTEND_SERVICE_NAME: "frontend-w08e1"

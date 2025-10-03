@@ -1,9 +1,7 @@
-# week08/k8s/product-service.yaml
-
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: product_service-w10-aks
+  name: product-service-w10-aks
   labels:
     app: product-service
 spec:
@@ -23,49 +21,29 @@ spec:
         ports:
         - containerPort: 8000
         env:
-        # Database connection details
         - name: POSTGRES_HOST
-          value: product-db-service-w08e1
+          value: product-db-service-w10-aks
         - name: POSTGRES_DB
           valueFrom:
             configMapKeyRef:
-              name: ecomm-config-w08e1
+              name: ecomm-config-w10-aks
               key: PRODUCTS_DB_NAME
         - name: POSTGRES_USER
           valueFrom:
             secretKeyRef:
-              name: ecomm-secrets-w08e1 # Secret name matches
+              name: ecomm-secrets-w09-aks
               key: POSTGRES_USER
         - name: POSTGRES_PASSWORD
           valueFrom:
             secretKeyRef:
-              name: ecomm-secrets-w08e1 # Secret name matches
+              name: ecomm-secrets-w09-aks
               key: POSTGRES_PASSWORD
-        - name: AZURE_STORAGE_ACCOUNT_NAME
-          valueFrom:
-            secretKeyRef:
-              name: ecomm-secrets-w08e1 # Secret name matches
-              key: AZURE_STORAGE_ACCOUNT_NAME
-        - name: AZURE_STORAGE_ACCOUNT_KEY
-          valueFrom:
-            secretKeyRef:
-              name: ecomm-secrets-w08e1 # Secret name matches
-              key: AZURE_STORAGE_ACCOUNT_KEY
-        - name: AZURE_STORAGE_CONTAINER_NAME
-          valueFrom:
-            configMapKeyRef:
-              name: ecomm-config-w08e1 # ConfigMap name matches
-              key: AZURE_STORAGE_CONTAINER_NAME
-        - name: AZURE_SAS_TOKEN_EXPIRY_HOURS
-          valueFrom:
-            configMapKeyRef:
-              name: ecomm-config-w08e1 # ConfigMap name matches
-              key: AZURE_SAS_TOKEN_EXPIRY_HOURS
+
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: product_service-w10-aks
+  name: product-service-w10-aks
   labels:
     app: product-service
 spec:
