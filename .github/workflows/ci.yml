@@ -209,7 +209,8 @@ jobs:
  #  Deploy to staging
   deploy_to_staging:
     runs-on: ubuntu-latest
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    needs: [staging_resources]
+    if: always() && needs.staging_resources.result == 'success'
     env:
       RG_PRODUCTION: anusha-rg-staging
       AKS_PRODUCTION: anusha-aks-staging
