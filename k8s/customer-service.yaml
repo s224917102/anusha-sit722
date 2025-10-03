@@ -3,7 +3,7 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: customer-service-w10-aks
+  name: customer-service
   labels:
     app: customer-service
 spec:
@@ -44,7 +44,7 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: customer-service-w10-aks
+  name: customer-service
   labels:
     app: customer-service
 spec:

@@ -81,6 +81,9 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4 # Action to check out your repository code
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
       # 2. Set up Python environment
       - name: Set up Python 3.10
         uses: actions/setup-python@v5 # Action to set up Python environment
@@ -164,25 +167,25 @@ jobs:
       # Build and Push Docker image for Product Service
       - name: Build and Push Product Service Image
         run: |
-            buildx build --platform=${PLATFORM} -t ${{ secrets.ACR_LOGIN_SERVER }}/product_service:latest ./backend/product_service/
+            docker build -t ${{ secrets.ACR_LOGIN_SERVER }}/product_service:latest ./backend/product_service/
             docker push ${{ secrets.ACR_LOGIN_SERVER }}/product_service:latest
 
       # Build and Push Docker image for Order Service
       - name: Build and Push Order Service Image
         run: |
-            buildx build --platform=${PLATFORM} -t ${{ secrets.ACR_LOGIN_SERVER }}/order_service:latest ./backend/order_service/
+            docker build -t ${{ secrets.ACR_LOGIN_SERVER }}/order_service:latest ./backend/order_service/
             docker push ${{ secrets.ACR_LOGIN_SERVER }}/order_service:latest
 
       # Build and Push Docker image for Customer Service
       - name: Build and Push Customer Service Image
         run: |
-            buildx build --platform=${PLATFORM} -t ${{ secrets.ACR_LOGIN_SERVER }}/customer_service:latest ./backend/customer_service/
+            docker build -t ${{ secrets.ACR_LOGIN_SERVER }}/customer_service:latest ./backend/customer_service/
             docker push ${{ secrets.ACR_LOGIN_SERVER }}/customer_service:latest
 
       # Build and Push Docker image for Frontend Service
       - name: Build and Push Frontend Image
         run: |
-          buildx build --platform=${PLATFORM} -t "${{ secrets.ACR_LOGIN_SERVER }}/frontend:latest" ./frontend/
+          docker build -t "${{ secrets.ACR_LOGIN_SERVER }}/frontend:latest" ./frontend/
           docker push "${{ secrets.ACR_LOGIN_SERVER }}/frontend:latest"
       
       - name: Logout from Azure
@@ -196,9 +199,9 @@ jobs:
     if: always() && needs.build_and_push_images.result == 'success'
     env:
       NS: "staging"
-      PRODUCT_SERVICE_NAME:  "product-service-w10-aks"
-      CUSTOMER_SERVICE_NAME: "customer-service-w10-aks"
-      ORDER_SERVICE_NAME: "order-service-w10-aks"
+      PRODUCT_SERVICE_NAME:  "product-service"
+      CUSTOMER_SERVICE_NAME: "customer-service"
+      ORDER_SERVICE_NAME: "order-service"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -280,7 +283,7 @@ jobs:
       - name: Build and Push Frontend Image
         run: |
           set -euo pipefail
-          docker buildx build --platform=${PLATFORM} -t "${{ secrets.ACR_LOGIN_SERVER }}/frontend:latest" ./frontend/
+          docker build -t "${{ secrets.ACR_LOGIN_SERVER }}/frontend:latest" ./frontend/
           docker push "${{ secrets.ACR_LOGIN_SERVER }}/frontend:latest"
 
       - name: Deploy Frontend to AKS
@@ -295,7 +298,7 @@ jobs:
 
       - name: Wait for Frontend LoadBalancer IPs
         env:
-          FRONTEND_SERVICE_NAME: "frontend-w10-aks"
+          FRONTEND_SERVICE_NAME: "frontend"
         run: |
           set -euo pipefail
           
