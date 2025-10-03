@@ -381,7 +381,7 @@ jobs:
   # Job 5: Destroy Staging Environment
   destroy_staging_environment:
     runs-on: ubuntu-latest
-    needs: [run_staging_tests, deploy_to_staging]
+    needs: [deploy_to_staging]
     if: always() && needs.deploy_to_staging.result == 'success'
 
     steps:
