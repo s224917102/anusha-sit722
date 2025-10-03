@@ -249,7 +249,7 @@ jobs:
       - name: Deploy Product & Order services
         run: |
           set -euo pipefail
-
+          cd k8s/
           kubectl apply -f product-service.yaml -n staging
           kubectl apply -f order-service.yaml -n staging
           kubectl apply -f customer-service.yaml -n staging
