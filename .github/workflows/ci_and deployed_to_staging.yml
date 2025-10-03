@@ -254,41 +254,35 @@ jobs:
           kubectl apply -f order-service.yaml -n staging
           kubectl apply -f customer-service.yaml -n staging
       
-      - name: Wait for Application Services to be Ready 
-        run: |
-          echo " Waiting for application services to be ready..."
-          kubectl wait --for=condition=available --timeout=60s deployment/product-service-w10-aks -n staging
-          kubectl wait --for=condition=available --timeout=60s deployment/order-service-w10-aks -n staging
-          kubectl wait --for=condition=available --timeout=60s deployment/customer-service-w10-aks -n staging
-          echo " Application services are ready!"
 
       - name: Get Staging Environment URLs
         run: |
-          echo " Retrieving staging environment URLs..."
-          kubectl get services -n staging
+          PRODUCT_IP=""
+          ORDER_IP=""
+          CUSTOMER_IP=""
           
-          # Wait for external IPs with timeout
-          echo " Waiting for LoadBalancer external IPs..."
-          timeout 10 bash -c '
-          while [[ $(kubectl get svc "$PRODUCT_SERVICE_NAME" -n staging -o jsonpath="{.status.loadBalancer.ingress[0].ip}" 2>/dev/null) == "" ]]; do
-            echo "Waiting for "$PRODUCT_SERVICE_NAME" external IP..."
-            sleep 15
-          done
-          while [[ $(kubectl get svc "$ORDER_SERVICE_NAME" -n staging -o jsonpath="{.status.loadBalancer.ingress[0].ip}" 2>/dev/null) == "" ]]; do
-            echo "Waiting for "$ORDER_SERVICE_NAME" external IP..."
-            sleep 15
-          done
-          while [[ $(kubectl get svc "$CUSTOMER_SERVICE_NAME" -n staging -o jsonpath="{.status.loadBalancer.ingress[0].ip}" 2>/dev/null) == "" ]]; do
-            echo "Waiting for "$CUSTOMER_SERVICE_NAME" external IP..."
-            sleep 15
-          done
-          ' || echo "  LoadBalancer IPs may take additional time to provision"
+          for i in $(seq 1 60); do
+            echo "Attempt $i/60 to get IPs..."
+            PRODUCT_IP=$(kubectl get service "$PRODUCT_SERVICE_NAME" -n staging -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+            ORDER_IP=$(kubectl get service "$ORDER_SERVICE_NAME" -n staging -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+            CUSTOMER_IP=$(kubectl get svc "$CUSTOMER_SERVICE_NAME" -n staging -o jsonpath="{.status.loadBalancer.ingress[0].ip}")
 
-          echo "Injecting IPs into frontend/static/js/main.js"
+            if [[ -n "$PRODUCT_IP" && -n "$ORDER_IP" || -z "$CUSTOMER_IP" ]]; then
+              echo "All backend LoadBalancer IPs assigned!"
+              echo "Product Service IP: $PRODUCT_IP"
+              echo "Order Service IP: $ORDER_IP"
+              echo "Order Service IP: $CUSTOMER_IP"
+              break
+            fi
+            sleep 5 # Wait 5 seconds before next attempt
+          done
+          
+          if [[ -z "$PRODUCT_IP" || -z "$ORDER_IP" || -z "$CUSTOMER_IP" ]]; then
+            echo "Error: One or more LoadBalancer IPs not assigned after timeout."
+            exit 1 # Fail the job if IPs are not obtained
+          fi
 
-          PRODUCT_IP=$(kubectl get svc "$PRODUCT_SERVICE_NAME" -n staging -o jsonpath="{.status.loadBalancer.ingress[0].ip}")
-          ORDER_IP=$(kubectl get svc "$CUSTOMER_SERVICE_NAME" -n staging -o jsonpath="{.status.loadBalancer.ingress[0].ip}")
-          CUSTOMER_IP=$(kubectl get svc "$ORDER_SERVICE_NAME" -n staging -o jsonpath="{.status.loadBalancer.ingress[0].ip}") 
+          echo "Injecting IPs into frontend/static/js/main.js" 
 
           # Test Product Service API endpoints
           echo "Testing Product Service APIs..."
