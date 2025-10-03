@@ -331,7 +331,7 @@ jobs:
           echo "Deploying frontend to AKS cluster.."
           
           cd k8s/
-          # Ensure frontend-service.yaml is configured with your ACR
+          # Ensure frontend.yaml is configured with your ACR
           kubectl apply -f frontend.yaml -n staging
 
       - name: Wait for Frontend LoadBalancer IPs
