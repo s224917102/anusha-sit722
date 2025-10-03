@@ -1,5 +1,15 @@
-fastapi==0.104.1
+sqlalchemy
+python-multipart
+pydantic
+azure-storage-blob
+prometheus_client
+
+# Your existing packages below...
+fastapi>=0.109.0
 uvicorn==0.24.0
-sqlalchemy==2.0.23
-pytest==7.4.3        # ← ADD THIS LINE
-pytest-asyncio==0.21.1
+psycopg2-binary==2.9.9
+httpx==0.25.2
+# ... other packages
+
+setuptools>=65.0.0
+wheel>=0.41.0
