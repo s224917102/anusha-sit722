@@ -101,16 +101,41 @@ jobs:
 
 
       # 5. Run tests for product service
-      - name: Run tests for ${{ matrix.service }}
-        working-directory: backend/${{ matrix.service }}
+
+      - name: Run product_service tests
+        working-directory: backend/product_service
         env:
-          POSTGRES_HOST: localhost
-          POSTGRES_PORT: ${{ matrix.service == 'product_service' && '5432' || '5433' || '5434' }}
-          POSTGRES_DB: ${{ matrix.service == 'product_service' && 'products' || 'orders' || 'customers'}}
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
+            POSTGRES_HOST: localhost
+            POSTGRES_PORT: 5432
+            POSTGRES_DB: products
+            POSTGRES_USER: postgres
+            POSTGRES_PASSWORD: postgres
         run: |
-          pytest tests --maxfail=1 --disable-warnings -q
+            pytest tests --maxfail=1 --disable-warnings -q
+
+      - name: Run order_service tests
+        working-directory: backend/order_service
+        env:
+            POSTGRES_HOST: localhost
+            POSTGRES_PORT: 5433
+            POSTGRES_DB: orders
+            POSTGRES_USER: postgres
+            POSTGRES_PASSWORD: postgres
+        run: |
+            pytest tests --maxfail=1 --disable-warnings -q
+
+
+      - name: Run customer_service tests
+        working-directory: backend/customer_service
+        env:
+            POSTGRES_HOST: localhost
+            POSTGRES_PORT: 5434
+            POSTGRES_DB: customers
+            POSTGRES_USER: postgres
+            POSTGRES_PASSWORD: postgres
+        run: |
+            pytest tests --maxfail=1 --disable-warnings -q
+
 
   # Job 2: Build and Push Docker Images (runs only if tests pass and image_push is true)
   build_and_push_images:
