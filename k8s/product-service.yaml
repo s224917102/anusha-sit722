@@ -31,12 +31,12 @@ spec:
         - name: POSTGRES_USER
           valueFrom:
             secretKeyRef:
-              name: ecomm-secrets-w09-aks
+              name: ecomm-secrets-w10-aks
               key: POSTGRES_USER
         - name: POSTGRES_PASSWORD
           valueFrom:
             secretKeyRef:
-              name: ecomm-secrets-w09-aks
+              name: ecomm-secrets-w10-aks
               key: POSTGRES_PASSWORD
 
 ---
