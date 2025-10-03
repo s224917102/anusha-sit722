@@ -203,7 +203,6 @@ jobs:
         uses: azure/login@v1
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
-
       - name: Display Trigger Information
         run: |
           echo "Staging Resource Group: ${{ env.RG_STAGING }}"

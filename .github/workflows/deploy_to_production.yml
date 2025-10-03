@@ -10,15 +10,16 @@ on:
       
 jobs:
   # Job 1: Deploy to Production
+ #  Deploy to production
   deploy_to_production:
     runs-on: ubuntu-latest
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    needs: [build_and_push_images]
+    if: always() && needs.build_and_push_images.result == 'success'
     env:
-      RG_PRODUCTION: anusha-rg-prod
-      AKS_PRODUCTION: anusha-aks-prod
-      NS: production
-
-    steps:
+      NS: "production"
+      RG_STAGING: "anusha-rg-production"
+      AKS_STAGING: "anusha-aks-production"
+  steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -27,10 +28,15 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
+      - name: Display Trigger Information
+        run: |
+          echo "Staging Resource Group: ${{ env.RG_PRODUCTION }}"
+          echo "Staging AKS Cluster: ${{ env.AKS_PRODUCTION }}"
+
       - name: Get AKS credentials
         run: |
           set -euo pipefail
-          az aks get-credentials --resource-group "$RG_PRODUCTION" --name "$AKS_PRODUCTION" --overwrite-existing
+          az aks get-credentials --resource-group "${{ env.RG_PRODUCTION }}" --name "${{ env.AKS_PRODUCTION }}" --overwrite-existing
 
       - name: Create namespace & set context
         run: |
@@ -78,9 +84,9 @@ jobs:
       
       - name: Wait for Backend LoadBalancer IPs
         env:
-          PRODUCT_SERVICE_NAME:  "product-service-w08e1"
-          CUSTOMER_SERVICE_NAME: "customer-service-w08e1"
-          ORDER_SERVICE_NAME: "order-service-w08e1"
+          PRODUCT_SERVICE_NAME:  "product-service-w10-aks"
+          CUSTOMER_SERVICE_NAME: "customer-service-w10-aks"
+          ORDER_SERVICE_NAME: "order-service-w10-aks"
 
         run: |
           set -euo pipefail
@@ -132,6 +138,7 @@ jobs:
 
       - name: Inject Backend IPs into Frontend main.js
         run: |
+          set -euo pipefail
           echo "Injecting IPs into frontend/static/js/main.js"
 
           PRODUCT_IP=${{ steps.get_product_ip.outputs.external_ip }}
@@ -164,16 +171,10 @@ jobs:
           cd k8s/
           # Ensure frontend-service.yaml is configured with your ACR
           kubectl apply -n "$NS" -f frontend.yaml
-            - name: Deploy Production Application
-        run: |
-          echo " Deploying to production environment..."
-          kubectl apply -f k8s/
-          echo " Waiting for services to initialize..."
-          sleep 120
 
       - name: Wait for Frontend LoadBalancer IPs
         env:
-          FRONTEND_SERVICE_NAME: "frontend-w08e1"
+          FRONTEND_SERVICE_NAME: "frontend-w10-aks"
         run: |
           set -euo pipefail
           echo "Waiting for Frontend LoadBalancer IPs to be assigned (up to 5 minutes)..."
