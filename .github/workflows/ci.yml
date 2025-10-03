@@ -87,17 +87,15 @@ jobs:
       # 3. Install dependencies and run code quality checks
       - name: Install dependencies
         run: | # Use a multi-line script to install pip dependencies
+          cd k8s/
+          ls 
+          cd ..
           pip install --upgrade pip
-
-          echo " Testing service: ${{ matrix.service }}"
-          echo " Files in ${{ matrix.service }}:"
-          ls -la
-          pip install -r requirements.txt
-
-          echo " Running tests..."
-          timeout 300s python -m pytest test_app.py -v --tb=short -x || echo "Some tests failed, but continuing pipeline"
-          echo " Testing completed for ${{ matrix.service }}"
-          
+          # Loop through each backend service folder
+          for req in backend/*/requirements.txt; do
+            echo "Installing $req"
+            pip install -r "$req"
+          done
           # Install CI tools
           pip install pytest httpx
 
