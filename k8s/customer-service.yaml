@@ -21,7 +21,7 @@ spec:
         image: anushakatuwalacr.azurecr.io/customer_service:latest
         imagePullPolicy: Always
         ports:
-        - containerPort: 8000
+        - containerPort: 8002
         env:
         - name: POSTGRES_HOST
           value: customer-db-service-w10-aks
