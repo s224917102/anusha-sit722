@@ -21,7 +21,7 @@ env:
 
 jobs:
   # Job 1: Run tests and linting for all backend services
-  test_and_lint_backends:
+  test_and_lint_services:
     runs-on: ubuntu-latest # Use a GitHub-hosted runner
     strategy:
       matrix:
