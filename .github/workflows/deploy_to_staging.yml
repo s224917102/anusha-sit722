@@ -1,10 +1,6 @@
 name: Deploy to staging
 
 on:
-  # Manual trigger
-  workflow_dispatch:
-
-
   workflow_run:
     workflows: ["Testing, building and push image to ACR"]
     types:

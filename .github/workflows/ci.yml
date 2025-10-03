@@ -184,3 +184,8 @@ jobs:
       
       - name: Logout from Azure
         run: az logout
+
+  staging_deployment:
+      needs: [test_and_lint_services, build_and_push_images]
+      uses: ./.github/workflows/deploy_to_staging.yml
+      secrets: inherit
