@@ -176,6 +176,7 @@ jobs:
             echo "Waiting for Frontend LoadBalancer IPs to be assigned (up to 5 minutes)..."
             FRONTEND_IP=""
             
+            
             for i in $(seq 1 60); do
               echo "Attempt $i/60 to get IP..."
               FRONTEND_IP=$(kubectl get service "$FRONTEND_SERVICE_NAME" -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
