@@ -225,14 +225,14 @@ jobs:
             ORDER_IP=$(kubectl get service "$ORDER_SERVICE_NAME" -n staging -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
             CUSTOMER_IP=$(kubectl get svc "$CUSTOMER_SERVICE_NAME" -n staging -o jsonpath="{.status.loadBalancer.ingress[0].ip}")
 
-            if [[ -n "$PRODUCT_IP" && -n "$ORDER_IP" || -z "$CUSTOMER_IP" ]]; then
+            if [[ -n "$PRODUCT_IP" && -n "$ORDER_IP" || -n "$CUSTOMER_IP" ]]; then
               echo "All backend LoadBalancer IPs assigned!"
               echo "Product Service IP: $PRODUCT_IP"
               echo "Order Service IP: $ORDER_IP"
               echo "CUSTOMER Service IP: $CUSTOMER_IP"
               break
             fi
-            sleep 60 # Wait 5 seconds before next attempt
+            sleep 30 # Wait 5 seconds before next attempt
           done
           
           # Test Product Service API endpoints
