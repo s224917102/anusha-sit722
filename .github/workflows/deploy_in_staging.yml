@@ -3,10 +3,6 @@ name: Deploy to Staging Environment
 on:
   workflow_dispatch:
 
-  workflow_run:
-    workflows: ["Testing, building and push to ACR"]
-    types: [completed]
-
 permissions:
   contents: read
   id-token: write   # Required for OIDC
@@ -27,7 +23,6 @@ jobs:
   #  Deploy to staging
   deploy_to_staging:
     runs-on: ubuntu-latest
-    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'testing' }}
     env:
       PRODUCT_SERVICE_NAME:  "product-service"
       CUSTOMER_SERVICE_NAME: "customer-service"
