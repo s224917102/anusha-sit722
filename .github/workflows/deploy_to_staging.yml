@@ -1,0 +1,237 @@
+name: Deploy to Staging Environment - Stage 2
+
+# trigger for this pipeline whe code  push to a testing branch
+on:
+  workflow_dispatch:
+
+  workflow_run:
+    workflows: ["Testing, building and push to ACR"]
+    types: [completed]
+
+permissions:
+  contents: read
+  id-token: write   # Required for OIDC
+
+concurrency:
+  group: stage2-${{ github.ref }}
+  cancel-in-progress: true
+
+# Define global environment variables that can be used across jobs
+env:
+  # Dynamically generate image tags based on Git SHA and GitHub Run ID
+  # This provides unique, traceable tags for each image build
+  IMAGE_TAG: ${{ github.sha }}-${{ github.run_id }}
+  RG_STAGING: "anusha-rg"
+  AKS_STAGING: "anusha-aks"
+
+jobs:
+  #  Deploy to staging
+  deploy_to_staging:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'testing' }}
+    env:
+      PRODUCT_SERVICE_NAME:  "product-service"
+      CUSTOMER_SERVICE_NAME: "customer-service"
+      ORDER_SERVICE_NAME: "order-service"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      # Login to Azure Container Registry (ACR)
+      - name: Login to Azure Container Registry
+        run: az acr login --name ${{ secrets.ACR_LOGIN_SERVER }}
+
+      - name: Display Trigger Information
+        run: |
+          echo "Staging Resource Group: ${{ env.RG_STAGING }}"
+          echo "Staging AKS Cluster: ${{ env.AKS_STAGING }}"
+
+      - name: Get AKS credentials
+        run: |
+          set -euo pipefail
+          az aks get-credentials --resource-group "${{ env.RG_STAGING }}" --name "${{ env.AKS_STAGING }}" --overwrite-existing
+
+      - name: Create staging namespace
+        run: kubectl create namespace staging --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Deploy Backend Infrastructure (Namespace, ConfigMaps, Secrets, Databases)
+        run: |
+          set -euo pipefail
+          echo "Deploying backend infrastructure..."
+          cd k8s/
+          kubectl apply -f configmaps.yaml -n staging
+          kubectl apply -f secrets.yaml -n staging
+          kubectl apply -f product-db.yaml -n staging
+          kubectl apply -f order-db.yaml -n staging
+          kubectl apply -f customer-db.yaml -n staging
+
+      - name: Deploy Product & Order services
+        run: |
+          set -euo pipefail
+          cd k8s/
+          kubectl apply -f product-service.yaml -n staging
+          kubectl apply -f order-service.yaml -n staging
+          kubectl apply -f customer-service.yaml -n staging
+      
+
+      - name: Run Test For the backend URL
+        run: |
+          PRODUCT_IP=""
+          ORDER_IP=""
+          CUSTOMER_IP=""
+          
+          for i in $(seq 1 60); do
+            echo "Attempt $i/60 to get IPs..."
+            PRODUCT_IP=$(kubectl get service "$PRODUCT_SERVICE_NAME" -n staging -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+            ORDER_IP=$(kubectl get service "$ORDER_SERVICE_NAME" -n staging -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+            CUSTOMER_IP=$(kubectl get svc "$CUSTOMER_SERVICE_NAME" -n staging -o jsonpath="{.status.loadBalancer.ingress[0].ip}")
+
+            if [[ -n "$PRODUCT_IP" && -n "$ORDER_IP" || -z "$CUSTOMER_IP" ]]; then
+              echo "All backend LoadBalancer IPs assigned!"
+              echo "Product Service IP: $PRODUCT_IP"
+              echo "Order Service IP: $ORDER_IP"
+              echo "CUSTOMER Service IP: $CUSTOMER_IP"
+              break
+            fi
+            sleep 30 # Wait 5 seconds before next attempt
+          done
+          
+          # Test Product Service API endpoints
+          echo "Testing Product Service APIs..."
+          curl -f -v -s "http://$PRODUCT_IP:8000" || exit 1
+          
+          # Test Order Service API endpoints
+          echo "Testing Order Service APIs..."
+          curl -f -v -s "http://$ORDER_IP:8001" || exit 1
+
+          # Test Customer Service API endpoints
+          echo "Testing Customer Service APIs..." 
+          curl -f -v -s "http://$CUSTOMER_IP:8002" || exit 1
+          
+          echo " All acceptance tests passed!"
+
+          # Ensure frontend/main.js is directly in the path for sed
+          sed -i "s|_PRODUCT_API_URL_|http://$PRODUCT_IP:8000|g" frontend/main.js
+          sed -i "s|_ORDER_API_URL_|http://$ORDER_IP:8001|g" frontend/main.js
+          sed -i "s|_CUSTOMER_API_URL_|http://$CUSTOMER_IP:8002|g" frontend/main.js
+          
+          # Display the modified file content for debugging
+          echo "--- Modified main.js content ---"
+          cat frontend/main.js
+          echo "---------------------------------"
+      
+      # Build and Push Docker image for Frontend
+      - name: Build and Push Frontend Image
+        run: |
+          docker build -f frontend/Dockerfile -t "${{ secrets.ACR_LOGIN_SERVER }}/frontend:latest" frontend
+          docker tag  "${{ secrets.ACR_LOGIN_SERVER }}/frontend:latest" "${{ secrets.ACR_LOGIN_SERVER }}/frontend:${{ env.IMAGE_TAG }}"
+          docker push "${{ secrets.ACR_LOGIN_SERVER }}/frontend:${{ env.IMAGE_TAG }}"
+          docker push "${{ secrets.ACR_LOGIN_SERVER }}/frontend:latest"
+
+      - name: Deploy Frontend to AKS
+        run: |
+          set -euo pipefail
+
+          echo "Deploying frontend to AKS cluster.."
+          
+          cd k8s/
+          # Ensure frontend.yaml is configured with your ACR
+          kubectl apply -f frontend.yaml -n staging
+
+      - name: Wait for Frontend LoadBalancer IPs
+        env:
+          FRONTEND_SERVICE_NAME: "frontend"
+        run: |
+          set -euo pipefail
+          
+          echo "Waiting for Frontend LoadBalancer IPs to be assigned (up to 5 minutes)..."
+          FRONTEND_IP=""
+          
+          for i in $(seq 1 60); do
+            echo "Attempt $i/60 to get IP..."
+            FRONTEND_IP=$(kubectl get service "$FRONTEND_SERVICE_NAME" -n staging -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+
+            if [[ -n "$FRONTEND_IP" ]]; then
+              echo "Frontend LoadBalancer IPs assigned: $FRONTEND_IP"
+              break
+            fi
+            sleep 30 # Wait 5 seconds before next attempt
+          done
+          
+          if [[ -z "$FRONTEND_IP" ]]; then
+            echo "Error: One or more LoadBalancer IPs not assigned after timeout."
+            exit 1 # Fail the job if IP is not obtained
+          fi
+
+          # Get frontend
+          curl -f -v -s "http://$FRONTEND_IP:80" || exit 1
+
+          echo " STAGING ENVIRONMENT DEPLOYED SUCCESSFULLY!"
+
+          
+      - name: External IP and Pods Check
+        run: |
+          set -euo pipefail
+
+          kubectl get svc -n staging
+          
+          kubectl get pods -n staging
+
+      - name: Logout from Azure
+        run: az logout
+
+
+  # Job 5: Destroy Staging Environment
+  destroy_staging_environment:
+    runs-on: ubuntu-latest
+    needs: [deploy_to_staging]
+    if: always() && needs.deploy_to_staging.result == 'success'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Get AKS Credentials
+        run: |
+          az aks get-credentials \
+            --resource-group ${{ env.RG_STAGING }} \
+            --name ${{ env.AKS_STAGING }} \
+            --overwrite-existing
+          
+          kubectl get svc -n staging
+      - name: Wait for manual testing
+        run: |
+          echo " Pausing for manual testing (1 minutes)..."
+          sleep 60 # Sleep for 1 minutes to allow manual testing
+
+      - name: Delete Backend Infrastructure (Namespace, ConfigMaps, Secrets, Databases)
+        run: |
+          echo "Deleting backend infrastructure..."
+          cd k8s/
+          kubectl delete -f configmaps.yaml -n staging
+          kubectl delete -f secrets.yaml -n staging
+          kubectl delete -f product-db.yaml -n staging
+          kubectl delete -f order-db.yaml -n staging
+          kubectl delete -f customer-db.yaml -n staging
+
+      - name: Delete Backend Microservices (Product, Order)
+        run: |
+          echo "Deleting backend microservices..."
+          cd k8s/
+          kubectl delete -f product-service.yaml -n staging
+          kubectl delete -f order-service.yaml -n staging
+          kubectl delete -f customer-service.yaml -n staging
+
+      - name: Logout from Azure
+        run: az logout
+        if: always() 
