@@ -1,54 +1,164 @@
-name: Production Deploy (on main)
+name: Production Deploy (on main) - Stage3
 
 on:
   pull_request:
     branches: [ main ]
     types: [closed]
 
-  env:
-    RG_PRODUCTION: "anusha-rg-production"
-    AKS_PRODUCTION: "anusha-aks-production"   
+env:
+  RESOURCE_GROUP: "anusha-rg"
+  AKS_CLUSTER: "anusha-aks"   
 
 jobs:
-  deploy-production:
-    if: github.event.pull_request.merged == true
-    name: Deploy to Production
+ #  Deploy to production
+  deploy_to_production:
     runs-on: ubuntu-latest
-    
+    if: github.event.pull_request.merged == true
+    env:
+      NS: "production"
+      PRODUCT_SERVICE_NAME:  "product-service"
+      CUSTOMER_SERVICE_NAME: "customer-service"
+      ORDER_SERVICE_NAME: "order-service"
     steps:
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Configure Azure credentials
+      # Azure login using a Service Principal secret
+      - name: Azure Login
         uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
+      # Login to Azure Container Registry (ACR)
+      - name: Login to Azure Container Registry
+        run: az acr login --name ${{ secrets.ACR_LOGIN_SERVER }}
+
       - name: Get AKS credentials
         run: |
           set -euo pipefail
-          az aks get-credentials --resource-group "${{ env.RG_PRODUCTION }}" --name "${{ env.AKS_PRODUCTION }}" --overwrite-existing
+          az aks get-credentials --resource-group "${{ env.RESOURCE_GROUP }}" --name "${{ env.AKS_CLUSTER }}" --overwrite-existing
 
-      - name: Create staging namespace
+      - name: Create production namespace
         run: kubectl create namespace production --dry-run=client -o yaml | kubectl apply -f -
 
-      - name: Deploy Production Application
+      - name: Deploy Backend Infrastructure (Namespace, ConfigMaps, Secrets, Databases)
         run: |
-          echo " Deploying to production environment..."
-          kubectl apply -f k8s/
-          echo " Waiting for services to initialize..."
-          sleep 120
+          set -euo pipefail
+          echo "Deploying backend infrastructure..."
+          cd k8s/
+          kubectl apply -f configmaps.yaml -n production
+          kubectl apply -f secrets.yaml -n production
+          kubectl apply -f product-db.yaml -n production
+          kubectl apply -f order-db.yaml -n production
+          kubectl apply -f customer-db.yaml -n production
 
-      - name: Check deployment status
+      - name: Deploy Product & Order services
         run: |
-          echo "Current status:"
-          kubectl get pods
-          kubectl get services
-          echo "Production deployment completed successfully!"
+          set -euo pipefail
+          cd k8s/
+          kubectl apply -f product-service.yaml -n production
+          kubectl apply -f order-service.yaml -n production
+          kubectl apply -f customer-service.yaml -n production
 
-      - name: Get application URLs
+      - name: Run Test For the backend IPs
         run: |
-          echo "Your application URLs:"
-          kubectl get service frontend-w10-aks
-          kubectl get service product-service-w10-aks
-          echo "Note: It may take 2-5 minutes for LoadBalancer IPs to be assigned"
+          PRODUCT_IP=""
+          ORDER_IP=""
+          CUSTOMER_IP=""
+          
+          for i in $(seq 1 60); do
+            echo "Attempt $i/60 to get IPs..."
+            PRODUCT_IP=$(kubectl get service "$PRODUCT_SERVICE_NAME" -n production -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+            ORDER_IP=$(kubectl get service "$ORDER_SERVICE_NAME" -n production -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+            CUSTOMER_IP=$(kubectl get svc "$CUSTOMER_SERVICE_NAME" -n production -o jsonpath="{.status.loadBalancer.ingress[0].ip}")
+
+            if [[ -n "$PRODUCT_IP" && -n "$ORDER_IP" || -z "$CUSTOMER_IP" ]]; then
+              echo "All backend LoadBalancer IPs assigned!"
+              echo "Product Service IP: $PRODUCT_IP"
+              echo "Order Service IP: $ORDER_IP"
+              echo "CUSTOMER Service IP: $CUSTOMER_IP"
+              break
+            fi
+            sleep 30 # Wait 5 seconds before next attempt
+          done
+          
+          # Test Product Service API endpoints
+          echo "Testing Product Service APIs..."
+          curl -f -v -s "http://$PRODUCT_IP:8000" || exit 1
+          
+          # Test Order Service API endpoints
+          echo "Testing Order Service APIs..."
+          curl -f -v -s "http://$ORDER_IP:8001" || exit 1
+
+          # Test Customer Service API endpoints
+          echo "Testing Customer Service APIs..." 
+          curl -f -v -s "http://$CUSTOMER_IP:8002" || exit 1
+          
+          echo " All acceptance tests passed!"
+
+          # Ensure frontend/main.js is directly in the path for sed
+          sed -i "s|_PRODUCT_API_URL_|http://$PRODUCT_IP:8000|g" frontend/main.js
+          sed -i "s|_ORDER_API_URL_|http://$ORDER_IP:8001|g" frontend/main.js
+          sed -i "s|_CUSTOMER_API_URL_|http://$CUSTOMER_IP:8002|g" frontend/main.js
+          
+          # Display the modified file content for debugging
+          echo "--- Modified main.js content ---"
+          cat frontend/main.js
+          echo "---------------------------------"
+      
+      # Build and Push Docker image for Frontend
+      - name: Build and Push Frontend Image
+        run: |
+          docker build -t "${{ secrets.ACR_LOGIN_SERVER }}/frontend:latest" ./frontend/
+          docker push "${{ secrets.ACR_LOGIN_SERVER }}/frontend:latest"
+
+      - name: Deploy Frontend to AKS
+        run: |
+          set -euo pipefail
+
+          echo "Deploying frontend to AKS cluster.."
+          
+          cd k8s/
+          # Ensure frontend.yaml is configured with your ACR
+          kubectl apply -f frontend.yaml -n production
+
+      - name: Testing frontend IP
+        env:
+          FRONTEND_SERVICE_NAME: "frontend"
+        run: |
+          set -euo pipefail
+          
+          echo "Waiting for Frontend LoadBalancer IPs to be assigned (up to 5 minutes)..."
+          FRONTEND_IP=""
+          
+          for i in $(seq 1 60); do
+            echo "Attempt $i/60 to get IP..."
+            FRONTEND_IP=$(kubectl get service "$FRONTEND_SERVICE_NAME" -n production -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+
+            if [[ -n "$FRONTEND_IP" ]]; then
+              echo "Frontend LoadBalancer IPs assigned: $FRONTEND_IP"
+              break
+            fi
+            sleep 30 # Wait 5 seconds before next attempt
+          done
+          
+          if [[ -z "$FRONTEND_IP" ]]; then
+            echo "Error: One or more LoadBalancer IPs not assigned after timeout."
+            exit 1 # Fail the job if IP is not obtained
+          fi
+
+          # Get frontend
+          curl -f -v -s "http://$FRONTEND_IP:80" || exit 1
+
+          echo " PRODUCTION ENVIRONMENT DEPLOYED SUCCESSFULLY!"
+
+      - name: External IP and Pods Check
+        run: |
+          set -euo pipefail
+
+          kubectl get svc -n production
+          
+          kubectl get pods -n production
+
+      - name: Logout from Azure
+        run: az logout

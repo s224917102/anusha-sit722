@@ -1,5 +1,4 @@
-name: Testing, building and push to ACR and Deploy to Staging
-
+name: Testing, building and push to ACR - Stage1
 # trigger for this pipeline whe code  push to a testing branch
 on:
   push:
@@ -10,7 +9,7 @@ permissions:
   id-token: write   # Required for OIDC
 
 concurrency:
-  group: backend-ci-${{ github.ref }}
+  group: stage1-${{ github.ref }}
   cancel-in-progress: true
 
 # Define global environment variables that can be used across jobs
@@ -18,9 +17,6 @@ env:
   # Dynamically generate image tags based on Git SHA and GitHub Run ID
   # This provides unique, traceable tags for each image build
   IMAGE_TAG: ${{ github.sha }}-${{ github.run_id }}
-  RG_STAGING: "anusha-rg-stg"
-  AKS_STAGING: "anusha-aks-stg"
-  NS: "staging"
 
 jobs:
   # Job 1: Run tests and linting for all backend services
@@ -105,42 +101,17 @@ jobs:
           # Install CI tools
           pip install pytest httpx
 
-
-      # 5. Run tests for product service
-
-      - name: Run product_service tests
-        working-directory: backend/product_service
+      # 5. Run tests for backend service
+      - name: Run tests for ${{ matrix.service }}
+        working-directory: backend/${{ matrix.service }}
         env:
-            POSTGRES_HOST: localhost
-            POSTGRES_PORT: 5432
-            POSTGRES_DB: products
-            POSTGRES_USER: postgres
-            POSTGRES_PASSWORD: postgres
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: ${{ matrix.service == 'product_service' && '5432' || (matrix.service == 'order_service' && '5433' || '5434') }}
+          POSTGRES_DB: ${{ matrix.service == 'product_service' && 'products' || (matrix.service == 'order_service' && 'orders' || 'customers') }}
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
         run: |
-            pytest tests --maxfail=1 --disable-warnings -q
-
-      - name: Run order_service tests
-        working-directory: backend/order_service
-        env:
-            POSTGRES_HOST: localhost
-            POSTGRES_PORT: 5433
-            POSTGRES_DB: orders
-            POSTGRES_USER: postgres
-            POSTGRES_PASSWORD: postgres
-        run: |
-            pytest tests --maxfail=1 --disable-warnings -q
-
-
-      - name: Run customer_service tests
-        working-directory: backend/customer_service
-        env:
-            POSTGRES_HOST: localhost
-            POSTGRES_PORT: 5434
-            POSTGRES_DB: customers
-            POSTGRES_USER: postgres
-            POSTGRES_PASSWORD: postgres
-        run: |
-            pytest tests --maxfail=1 --disable-warnings -q
+          pytest tests --maxfail=1 --disable-warnings -q
 
 
   # Job 2: Build and Push Docker Images (runs only if tests pass and image_push is true)
@@ -148,14 +119,15 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        service: [product_service, order_service, customer_service]
+        service: [product_service, order_service, customer_service, frontend]
     needs: [test_and_lint_services]
+    if: always() && needs.test_and_lint_services.result == 'success'
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
       # Azure login using a Service Principal secret
-      - name: Azure Login
+      - name: Azure Login (OIDC)
         uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }} # Needs to be set as a GitHub Secret (Service Principal JSON)
@@ -164,234 +136,21 @@ jobs:
       - name: Login to Azure Container Registry
         run: az acr login --name ${{ secrets.ACR_LOGIN_SERVER }}
 
-      # Build and Push Docker image for Product Service
-      - name: Build and Push Product Service Image
+      # Build and Push Docker image for Backend Services
+      - name: Build & Push ${{ matrix.service }} image
         run: |
-            docker build -t ${{ secrets.ACR_LOGIN_SERVER }}/product_service:latest ./backend/product_service/
-            docker push ${{ secrets.ACR_LOGIN_SERVER }}/product_service:latest
+          docker build -t "${{ secrets.ACR_LOGIN_SERVER }}/${{ matrix.service }}:${{ env.IMAGE_TAG }}" ./backend/${{ matrix.service }}/
+          docker tag  "${{ secrets.ACR_LOGIN_SERVER }}/${{ matrix.service }}:${{ env.IMAGE_TAG }}" "${{ secrets.ACR_LOGIN_SERVER }}/${{ matrix.service }}:latest"
+          docker push "${{ secrets.ACR_LOGIN_SERVER }}/${{ matrix.service }}:${{ env.IMAGE_TAG }}"
+          docker push "${{ secrets.ACR_LOGIN_SERVER }}/${{ matrix.service }}:latest"
 
-      # Build and Push Docker image for Order Service
-      - name: Build and Push Order Service Image
-        run: |
-            docker build -t ${{ secrets.ACR_LOGIN_SERVER }}/order_service:latest ./backend/order_service/
-            docker push ${{ secrets.ACR_LOGIN_SERVER }}/order_service:latest
-
-      # Build and Push Docker image for Customer Service
-      - name: Build and Push Customer Service Image
-        run: |
-            docker build -t ${{ secrets.ACR_LOGIN_SERVER }}/customer_service:latest ./backend/customer_service/
-            docker push ${{ secrets.ACR_LOGIN_SERVER }}/customer_service:latest
-
-      # Build and Push Docker image for Frontend Service
-      - name: Build and Push Frontend Image
-        run: |
-          docker build -t "${{ secrets.ACR_LOGIN_SERVER }}/frontend:latest" ./frontend/
-          docker push "${{ secrets.ACR_LOGIN_SERVER }}/frontend:latest"
-      
-      - name: Logout from Azure
-        run: az logout
-
-
- #  Deploy to staging
-  deploy_to_staging:
-    runs-on: ubuntu-latest
-    needs: [build_and_push_images]
-    if: always() && needs.build_and_push_images.result == 'success'
-    env:
-      NS: "staging"
-      PRODUCT_SERVICE_NAME:  "product-service"
-      CUSTOMER_SERVICE_NAME: "customer-service"
-      ORDER_SERVICE_NAME: "order-service"
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Azure 
-        uses: azure/login@v1
-        with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
-
-      # Login to Azure Container Registry (ACR)
-      - name: Login to Azure Container Registry
-        run: az acr login --name ${{ secrets.ACR_LOGIN_SERVER }}
-
-      - name: Display Trigger Information
-        run: |
-          echo "Staging Resource Group: ${{ env.RG_STAGING }}"
-          echo "Staging AKS Cluster: ${{ env.AKS_STAGING }}"
-
-      - name: Get AKS credentials
-        run: |
-          set -euo pipefail
-          az aks get-credentials --resource-group "${{ env.RG_STAGING }}" --name "${{ env.AKS_STAGING }}" --overwrite-existing
-
-      - name: Create staging namespace
-        run: kubectl create namespace staging --dry-run=client -o yaml | kubectl apply -f -
-
-      - name: Deploy Backend Infrastructure (Namespace, ConfigMaps, Secrets, Databases)
-        run: |
-          set -euo pipefail
-          echo "Deploying backend infrastructure..."
-          cd k8s/
-          kubectl apply -f configmaps.yaml -n staging
-          kubectl apply -f secrets.yaml -n staging
-          kubectl apply -f product-db.yaml -n staging
-          kubectl apply -f order-db.yaml -n staging
-          kubectl apply -f customer-db.yaml -n staging
-
-      - name: Deploy Product & Order services
-        run: |
-          set -euo pipefail
-          cd k8s/
-          kubectl apply -f product-service.yaml -n staging
-          kubectl apply -f order-service.yaml -n staging
-          kubectl apply -f customer-service.yaml -n staging
-      
-
-      - name: Run Test For the backend URL
-        run: |
-          PRODUCT_IP=""
-          ORDER_IP=""
-          CUSTOMER_IP=""
-          
-          for i in $(seq 1 60); do
-            echo "Attempt $i/60 to get IPs..."
-            PRODUCT_IP=$(kubectl get service "$PRODUCT_SERVICE_NAME" -n staging -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-            ORDER_IP=$(kubectl get service "$ORDER_SERVICE_NAME" -n staging -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-            CUSTOMER_IP=$(kubectl get svc "$CUSTOMER_SERVICE_NAME" -n staging -o jsonpath="{.status.loadBalancer.ingress[0].ip}")
-
-            if [[ -n "$PRODUCT_IP" && -n "$ORDER_IP" || -z "$CUSTOMER_IP" ]]; then
-              echo "All backend LoadBalancer IPs assigned!"
-              echo "Product Service IP: $PRODUCT_IP"
-              echo "Order Service IP: $ORDER_IP"
-              echo "Order Service IP: $CUSTOMER_IP"
-              break
-            fi
-            sleep 30 # Wait 5 seconds before next attempt
-          done
-          
-          # Test Product Service API endpoints
-          echo "Testing Product Service APIs..."
-          curl -f -v -s "http://$PRODUCT_IP:8000" || exit 1
-          
-          # Test Order Service API endpoints
-          echo "Testing Order Service APIs..."
-          curl -f -v -s "http://$ORDER_IP:8001" || exit 1
-
-          # Test Customer Service API endpoints
-          echo "Testing Customer Service APIs..." 
-          curl -f -v -s "http://$CUSTOMER_IP:8002" || exit 1
-          
-          echo " All acceptance tests passed!"
-
-          # Ensure frontend/main.js is directly in the path for sed
-          sed -i "s|_PRODUCT_API_URL_|http://$PRODUCT_IP:8000|g" frontend/main.js
-          sed -i "s|_ORDER_API_URL_|http://$ORDER_IP:8001|g" frontend/main.js
-          sed -i "s|_CUSTOMER_API_URL_|http://$CUSTOMER_IP:8002|g" frontend/main.js
-          
-          # Display the modified file content for debugging
-          echo "--- Modified main.js content ---"
-          cat frontend/main.js
-          echo "---------------------------------"
-      
       # Build and Push Docker image for Frontend
       - name: Build and Push Frontend Image
         run: |
-          docker build -t "${{ secrets.ACR_LOGIN_SERVER }}/frontend:latest" ./frontend/
+          docker build -t "${{ secrets.ACR_LOGIN_SERVER }}/frontend:${{ env.IMAGE_TAG }}" ./frontend
+          docker tag  "${{ secrets.ACR_LOGIN_SERVER }}/frontend:${{ env.IMAGE_TAG }}" "${{ secrets.ACR_LOGIN_SERVER }}/frontend:latest"
+          docker push "${{ secrets.ACR_LOGIN_SERVER }}/frontend:${{ env.IMAGE_TAG }}"
           docker push "${{ secrets.ACR_LOGIN_SERVER }}/frontend:latest"
-
-      - name: Deploy Frontend to AKS
-        run: |
-          set -euo pipefail
-
-          echo "Deploying frontend to AKS cluster.."
-          
-          cd k8s/
-          # Ensure frontend.yaml is configured with your ACR
-          kubectl apply -f frontend.yaml -n staging
-
-      - name: Wait for Frontend LoadBalancer IPs
-        env:
-          FRONTEND_SERVICE_NAME: "frontend"
-        run: |
-          set -euo pipefail
-          
-          echo "Waiting for Frontend LoadBalancer IPs to be assigned (up to 5 minutes)..."
-          FRONTEND_IP=""
-          
-          for i in $(seq 1 60); do
-            echo "Attempt $i/60 to get IP..."
-            FRONTEND_IP=$(kubectl get service "$FRONTEND_SERVICE_NAME" -n staging -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-
-            if [[ -n "$FRONTEND_IP" ]]; then
-              echo "Frontend LoadBalancer IPs assigned: $FRONTEND_IP"
-              break
-            fi
-            sleep 30 # Wait 5 seconds before next attempt
-          done
-          
-          if [[ -z "$FRONTEND_IP" ]]; then
-            echo "Error: One or more LoadBalancer IPs not assigned after timeout."
-            exit 1 # Fail the job if IP is not obtained
-          fi
-
-          # Get frontend
-          curl -f -v -s "http://$FRONTEND_IP:80" || exit 1
-
-          echo " STAGING ENVIRONMENT DEPLOYED SUCCESSFULLY!"
-
+      
       - name: Logout from Azure
         run: az logout
-
-
-  # Job 5: Destroy Staging Environment
-  destroy_staging_environment:
-    runs-on: ubuntu-latest
-    needs: [deploy_to_staging]
-    if: always() && needs.deploy_to_staging.result == 'success'
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Azure Login
-        uses: azure/login@v1
-        with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
-
-      - name: Get AKS Credentials
-        run: |
-          az aks get-credentials \
-            --resource-group ${{ env.RG_STAGING }} \
-            --name ${{ env.AKS_STAGING }} \
-            --overwrite-existing
-          
-          kubectl get svc -n staging
-      - name: Wait for manual testing
-        run: |
-          echo " Pausing for manual testing (1 minutes)..."
-          sleep 60 # Sleep for 1 minutes to allow manual testing
-
-      - name: Delete Backend Infrastructure (Namespace, ConfigMaps, Secrets, Databases)
-        run: |
-          echo "Deleting backend infrastructure..."
-          cd k8s/
-          kubectl delete -f configmaps.yaml -n staging
-          kubectl delete -f secrets.yaml -n staging
-          kubectl delete -f product-db.yaml -n staging
-          kubectl delete -f order-db.yaml -n staging
-          kubectl delete -f customer-db.yaml -n staging
-
-      - name: Delete Backend Microservices (Product, Order)
-        run: |
-          echo "Deleting backend microservices..."
-          cd k8s/
-          kubectl delete -f product-service.yaml -n staging
-          kubectl delete -f order-service.yaml -n staging
-          kubectl delete -f customer-service.yaml -n staging
-
-      - name: Logout from Azure
-        run: az logout
-        if: always() 
-
-  
