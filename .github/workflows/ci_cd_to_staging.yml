@@ -232,7 +232,7 @@ jobs:
               echo "CUSTOMER Service IP: $CUSTOMER_IP"
               break
             fi
-            sleep 30 # Wait 5 seconds before next attempt
+            sleep 60 # Wait 5 seconds before next attempt
           done
           
           # Test Product Service API endpoints
