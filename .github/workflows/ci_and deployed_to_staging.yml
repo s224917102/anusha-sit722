@@ -141,7 +141,7 @@ jobs:
       - name: Build & Push ${{ matrix.service }} image
         run: |
           docker build  -f backend/${{ matrix.service }}/Dockerfile -t "${{ secrets.ACR_LOGIN_SERVER }}/${{ matrix.service }}:latest" backend/${{ matrix.service }}
-          docker tag  "${{ secrets.ACR_LOGIN_SERVER }}/${{ matrix.service }}:${{ env.IMAGE_TAG }}" "${{ secrets.ACR_LOGIN_SERVER }}/${{ matrix.service }}:latest"
+          docker tag  "${{ secrets.ACR_LOGIN_SERVER }}/${{ matrix.service }}:latest" "${{ secrets.ACR_LOGIN_SERVER }}/${{ matrix.service }}:${{ env.IMAGE_TAG }}"
           docker push "${{ secrets.ACR_LOGIN_SERVER }}/${{ matrix.service }}:${{ env.IMAGE_TAG }}"
           docker push "${{ secrets.ACR_LOGIN_SERVER }}/${{ matrix.service }}:latest"
 
@@ -149,7 +149,7 @@ jobs:
       - name: Build and Push Frontend Image
         run: |
           docker build -f frontend/Dockerfile -t "${{ secrets.ACR_LOGIN_SERVER }}/frontend:latest" frontend
-          docker tag  "${{ secrets.ACR_LOGIN_SERVER }}/frontend:${{ env.IMAGE_TAG }}" "${{ secrets.ACR_LOGIN_SERVER }}/frontend:latest"
+          docker tag  "${{ secrets.ACR_LOGIN_SERVER }}/frontend:latest" "${{ secrets.ACR_LOGIN_SERVER }}/frontend:${{ env.IMAGE_TAG }}"
           docker push "${{ secrets.ACR_LOGIN_SERVER }}/frontend:${{ env.IMAGE_TAG }}"
           docker push "${{ secrets.ACR_LOGIN_SERVER }}/frontend:latest"
       
