@@ -6,7 +6,7 @@ on:
     workflows: ["Testing, building and push to ACR"]
     types: [completed]
 
-  workflow_dispatch:   # 👈 Now it will show "Run workflow" button
+  workflow_dispatch:
 
 permissions:
   contents: read
