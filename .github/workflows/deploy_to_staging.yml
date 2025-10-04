@@ -1,12 +1,13 @@
-name: Deploy to Staging Environment
+name: Deploy to Staging Environment - Stage 2
 
 # trigger for this pipeline whe code  push to a testing branch
 on:
-    workflow_run:
-        workflows: ["Testing, building and push to ACR - Stage1"]  # must exactly match Stage 1 name
-        types: [completed]
+  workflow_run:
+    workflows: ["Testing, building and push to ACR - Stage1"]
+    types: [completed]
 
-    workflow_dispatch:   # 👈 allows manual run from Actions tab
+  workflow_dispatch:   # 👈 Now it will show "Run workflow" button
+
 permissions:
   contents: read
   id-token: write   # Required for OIDC
