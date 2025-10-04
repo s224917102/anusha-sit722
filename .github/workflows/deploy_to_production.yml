@@ -7,7 +7,8 @@ on:
 
 env:
   RESOURCE_GROUP: "anusha-rg"
-  AKS_CLUSTER: "anusha-aks"   
+  AKS_CLUSTER: "anusha-aks"  
+  IMAGE_TAG: ${{ github.sha }}-${{ github.run_id }} 
 
 jobs:
  #  Deploy to production
@@ -109,7 +110,9 @@ jobs:
       # Build and Push Docker image for Frontend
       - name: Build and Push Frontend Image
         run: |
-          docker build -t "${{ secrets.ACR_LOGIN_SERVER }}/frontend:latest" ./frontend/
+          docker build -f frontend/Dockerfile -t "${{ secrets.ACR_LOGIN_SERVER }}/frontend:latest" frontend
+          docker tag  "${{ secrets.ACR_LOGIN_SERVER }}/frontend:${{ env.IMAGE_TAG }}" "${{ secrets.ACR_LOGIN_SERVER }}/frontend:latest"
+          docker push "${{ secrets.ACR_LOGIN_SERVER }}/frontend:${{ env.IMAGE_TAG }}"
           docker push "${{ secrets.ACR_LOGIN_SERVER }}/frontend:latest"
 
       - name: Deploy Frontend to AKS

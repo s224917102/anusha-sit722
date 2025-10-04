@@ -119,7 +119,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        service: [product_service, order_service, customer_service, frontend]
+        service: [product_service, order_service, customer_service]
     needs: [test_and_lint_services]
     if: always() && needs.test_and_lint_services.result == 'success'
     steps:
