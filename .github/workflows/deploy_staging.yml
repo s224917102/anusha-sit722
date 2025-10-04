@@ -2,7 +2,6 @@ name: Deploy to Staging Environment
 
 on:
   workflow_dispatch: {}
-
   workflow_run:
     workflows: ["Testing, building and push to ACR"]
     types: [completed]
