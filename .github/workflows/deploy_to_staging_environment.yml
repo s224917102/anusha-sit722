@@ -3,7 +3,7 @@ name: Deploy to Staging Environment - Stage 2
 # trigger for this pipeline whe code  push to a testing branch
 on:
   workflow_run:
-    workflows: ["Testing, building and push to ACR - Stage1"]
+    workflows: ["Testing, building and push to ACR"]
     types: [completed]
 
   workflow_dispatch:   # 👈 Now it will show "Run workflow" button
