@@ -1,4 +1,4 @@
-name: Deploy to Staging Environment - Stage 2
+name: Deploy to Staging Environment
 
 # trigger for this pipeline whe code  push to a testing branch
 on:
