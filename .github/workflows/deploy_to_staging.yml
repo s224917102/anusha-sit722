@@ -26,7 +26,7 @@ jobs:
  #  Deploy to staging
   deploy_to_staging:
     runs-on: ubuntu-latest
-    if: always() && needs.build_and_push_images.result == 'success'
+    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'testing' }}
     env:
       PRODUCT_SERVICE_NAME:  "product-service"
       CUSTOMER_SERVICE_NAME: "customer-service"
